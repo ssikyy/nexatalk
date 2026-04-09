@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    NexaTalk 日志配置
+    说明：
+    - 开发环境（dev）：彩色控制台输出，级别 DEBUG
+    - 生产环境（prod）：按天滚动文件输出，级别 INFO，保留 30 天
+    - 日志格式包含 traceId（由 TraceIdFilter 写入 MDC），方便链路追踪
+-->
+<configuration scan="true" scanPeriod="60 seconds">
+
+    <!-- 引入 Spring Boot 默认颜色转换器（彩色输出） -->
+    <conversionRule conversionWord="clr"
+                    converterClass="org.springframework.boot.logging.logback.ColorConverter"/>
+    <conversionRule conversionWord="wex"
+                    converterClass="org.springframework.boot.logging.logback.WhitespaceThrowableProxyConverter"/>
+
+    <!-- 日志格式：时间 | 级别 | traceId | 线程 | 类名 - 消息 -->
+    <property name="CONSOLE_LOG_PATTERN"
+              value="%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%X{traceId:-NO_TRACE}]){yellow} %clr([%15.15t]){faint} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wex"/>
+    <property name="FILE_LOG_PATTERN"
+              value="%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-NO_TRACE}] [%15.15t] %-40.40logger{39} : %m%n"/>
+
+    <!-- =========================================================
+         控制台输出（所有环境）
+         ========================================================= -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- =========================================================
+         文件输出（按天滚动，生产环境使用）
+         ========================================================= -->
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/nexatalk.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 每天生成一个文件 -->
+            <fileNamePattern>logs/nexatalk.%d{yyyy-MM-dd}.log</fileNamePattern>
+            <!-- 保留 30 天 -->
+            <maxHistory>30</maxHistory>
+            <!-- 总日志大小上限 3GB -->
+            <totalSizeCap>3GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>${FILE_LOG_PATTERN}</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- =========================================================
+         开发环境配置：控制台 DEBUG，不写文件
+         ========================================================= -->
+    <springProfile name="dev">
+        <!-- 项目代码包：DEBUG 级别，可查看所有日志包括 SQL -->
+        <logger name="com.ttikss.nexatalk" level="DEBUG"/>
+        <!-- MyBatis SQL 日志：DEBUG 级别，可看到具体执行的 SQL -->
+        <logger name="com.ttikss.nexatalk.mapper" level="DEBUG"/>
+        <!-- Spring Web：INFO，减少框架噪音 -->
+        <logger name="org.springframework.web" level="INFO"/>
+        <!-- Flyway：INFO，看迁移过程 -->
+        <logger name="org.flywaydb" level="INFO"/>
+
+        <root level="INFO">
+            <appender-ref ref="CONSOLE"/>
+        </root>
+    </springProfile>
+
+    <!-- =========================================================
+         生产环境配置：控制台 WARN，文件 INFO
+         ========================================================= -->
+    <springProfile name="prod">
+        <logger name="com.ttikss.nexatalk" level="INFO"/>
+        <logger name="org.springframework" level="WARN"/>
+
+        <root level="WARN">
+            <appender-ref ref="CONSOLE"/>
+            <appender-ref ref="FILE"/>
+        </root>
+    </springProfile>
+
+</configuration>

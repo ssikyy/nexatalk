@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.ttikss.nexatalk.mapper.NotificationMapper">
+
+    <!-- 批量插入通知 -->
+    <insert id="batchInsert" parameterType="java.util.List">
+        INSERT INTO notification (user_id, actor_id, type, title, content, content_type, image_url, is_pinned, is_bold, is_read, entity_type, entity_id, broadcast_id, created_at)
+        VALUES
+        <foreach collection="list" item="item" separator=",">
+            (#{item.userId}, #{item.actorId}, #{item.type}, #{item.title}, #{item.content}, #{item.contentType},
+             #{item.imageUrl}, #{item.isPinned}, #{item.isBold}, #{item.isRead}, #{item.entityType}, #{item.entityId}, #{item.broadcastId}, NOW())
+        </foreach>
+    </insert>
+
+</mapper>
