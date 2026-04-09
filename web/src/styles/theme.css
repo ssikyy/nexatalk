@@ -1,0 +1,125 @@
+/* =========================================
+   NexaTalk Design System - Theme Variables
+   ========================================= */
+:root {
+  /* Colors */
+  --color-primary: #3b82f6;       /* 主色调 Blue */
+  --color-primary-hover: #2563eb;
+  --color-secondary: #64748b;     /* 次要色 Slate */
+  
+  --bg-body: #F5F7FA;             /* 全局背景浅灰 */
+  --bg-card: #ffffff;             /* 卡片背景纯白 */
+  --bg-hover: #f1f5f9;            /* 悬停背景 */
+
+  --text-main: #1e293b;           /* 主要文字 Slate-800 */
+  --text-secondary: #64748b;      /* 次要文字 Slate-500 */
+  --text-placeholder: #94a3b8;
+
+  --border-color: #e2e8f0;        /* 边框颜色 Slate-200 */
+  
+  /* Layout */
+  --sidebar-width: 240px;
+  --right-panel-width: 320px;
+  --header-height: 60px;
+  --max-content-width: 640px;     /* 中间内容区域最大宽度 */
+  
+  /* Components */
+  --radius-md: 12px;              /* 卡片圆角 */
+  --radius-sm: 8px;               /* 按钮圆角 */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-hover: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+  /* Animation */
+  --transition-fast: 0.2s ease;
+  --transition-normal: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Dark Mode Variables (Reserved) */
+.dark {
+  --bg-body: #0f172a;
+  --bg-card: #1e293b;
+  --text-main: #f8fafc;
+  --text-secondary: #94a3b8;
+  --border-color: #334155;
+}
+
+/* =========================================
+   Global Reset & Base Styles
+   ========================================= */
+body {
+  background-color: var(--bg-body);
+  color: var(--text-main);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+ul, li {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+/* =========================================
+   Utility Classes (Card Style)
+   ========================================= */
+.card {
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
+  padding: 16px;
+  margin-bottom: 16px;
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-hover);
+}
+
+/* Button Animations */
+.btn-animate {
+  transition: transform 0.1s ease;
+}
+.btn-animate:active {
+  transform: scale(0.95);
+}
+
+/* =========================================
+   Page Transitions (Vue Transition)
+   ========================================= */
+/* Fade & Slide Up */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+  position: absolute; /* 防止布局跳动 */
+  width: 100%;
+}
+
+/* List Item Transitions */
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.3s ease;
+}
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateY(20px);
+}

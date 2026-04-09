@@ -1,0 +1,59 @@
+# =============================================================
+# NexaTalk 生产环境配置（预留模板）
+# 说明：生产部署时通过 Docker 环境变量注入所有敏感值
+#       严禁在此文件写入任何真实密码！
+#
+# 启动命令示例：
+#   SPRING_PROFILES_ACTIVE=prod \
+#   DB_URL=jdbc:mysql://prod-host:3306/nexatalk?... \
+#   DB_USERNAME=nexatalk_user \
+#   DB_PASSWORD=<secure_password> \
+#   REDIS_HOST=prod-redis-host \
+#   REDIS_PASSWORD=<redis_password> \
+#   java -jar server-api.jar
+# =============================================================
+
+spring:
+  # -------------------------------------------------------
+  # 生产环境数据源（全部从环境变量注入）
+  # -------------------------------------------------------
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      # 生产环境扩大连接池
+      maximum-pool-size: 50
+      minimum-idle: 10
+
+  # -------------------------------------------------------
+  # 生产环境 Redis
+  # -------------------------------------------------------
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD}
+
+jwt:
+  secret: ${JWT_SECRET}
+
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+knife4j:
+  enable: false
+  setting:
+    production: true
+
+# -------------------------------------------------------
+# 日志级别（生产环境只记录 WARN 及以上）
+# -------------------------------------------------------
+logging:
+  level:
+    com.ttikss.nexatalk: INFO
+    org.springframework.web: WARN
+    root: WARN

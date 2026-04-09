@@ -1,6 +1,8 @@
 # IntelliJ IDEA
 .idea/
 *.iml
+.cursor/
+.vscode/
 
 # Java
 target/
@@ -15,3 +17,7 @@ dist/
 
 # Env
 .env
+
+# Runtime uploads
+uploads/
+server/server-api/uploads/
