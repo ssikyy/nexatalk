@@ -1,6 +1,5 @@
 package com.ttikss.nexatalk.dto;
 
-import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
 /**
@@ -21,6 +20,7 @@ public class AdminUpdateUserRequest {
 
     /**
      * 角色: 0=普通用户, 1=管理员
+     * 超级管理员不允许通过后台直接授予
      */
     private Integer role;
 

@@ -121,11 +121,23 @@
             <span class="time-text">{{ formatDate(row.createdAt) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="190" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="canEdit(row)" size="small" type="primary" link @click="openEditDialog(row)">
-              <el-icon><Edit /></el-icon>编辑
-            </el-button>
+            <div class="table-actions">
+              <el-button v-if="canEdit(row)" size="small" type="primary" link @click="openEditDialog(row)">
+                <el-icon><Edit /></el-icon>编辑
+              </el-button>
+              <el-button
+                v-if="canResetPassword(row)"
+                size="small"
+                type="warning"
+                link
+                :loading="resettingUserId === row.id"
+                @click="handleResetPassword(row)"
+              >
+                重置密码
+              </el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -166,10 +178,23 @@
           <el-input v-model="form.bio" type="textarea" :rows="3" placeholder="请输入简介" />
         </el-form-item>
         <el-form-item label="角色">
-          <el-tag v-if="form.role === 2" type="warning" effect="dark">超级管理员</el-tag>
-          <el-tag v-else-if="form.role === 1" type="danger" effect="light">管理员</el-tag>
-          <el-tag v-else type="info" effect="light">普通用户</el-tag>
-          <div class="form-tip">角色不可编辑</div>
+          <el-select
+            v-if="userStore.isSuperAdmin"
+            v-model="form.role"
+            class="role-select"
+            placeholder="请选择角色"
+          >
+            <el-option label="普通用户" :value="0" />
+            <el-option label="管理员" :value="1" />
+          </el-select>
+          <template v-else>
+            <el-tag v-if="form.role === 2" type="warning" effect="dark">超级管理员</el-tag>
+            <el-tag v-else-if="form.role === 1" type="danger" effect="light">管理员</el-tag>
+            <el-tag v-else type="info" effect="light">普通用户</el-tag>
+          </template>
+          <div class="form-tip">
+            {{ userStore.isSuperAdmin ? '只能在普通用户和管理员之间切换，不能授予超级管理员。' : '仅超级管理员可调整角色。' }}
+          </div>
         </el-form-item>
         <el-form-item label="状态">
           <el-tag v-if="form.status === 0" type="success" effect="light">正常</el-tag>
@@ -188,10 +213,11 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
 import {
   adminListUsers,
+  adminResetPassword,
   adminUpdateUser
 } from '@/api/user'
 import {
@@ -212,6 +238,7 @@ const searchStatus = ref(null)
 
 const dialogVisible = ref(false)
 const saving = ref(false)
+const resettingUserId = ref(null)
 const form = ref({
   id: null,
   nickname: '',
@@ -233,6 +260,12 @@ const canEdit = (row) => {
   // 管理员只能由超级管理员编辑
   if (row.role === 1 && !userStore.isSuperAdmin) return false
   return true
+}
+
+const canResetPassword = (row) => {
+  if (row.role === 2) return false
+  if (userStore.isSuperAdmin) return true
+  return row.role === 0
 }
 
 const fetchUsers = async () => {
@@ -279,16 +312,49 @@ const submit = async () => {
   }
   saving.value = true
   try {
-    // 只允许修改昵称和简介
-    await adminUpdateUser(form.value.id, {
+    const payload = {
       nickname: form.value.nickname,
       bio: form.value.bio
-    })
+    }
+
+    if (userStore.isSuperAdmin) {
+      payload.role = form.value.role
+    }
+
+    await adminUpdateUser(form.value.id, payload)
     ElMessage.success('更新成功')
     dialogVisible.value = false
     await fetchUsers()
   } finally {
     saving.value = false
+  }
+}
+
+const handleResetPassword = async (row) => {
+  try {
+    await ElMessageBox.confirm(
+      `确定要重置用户 @${row.username} 的密码吗？`,
+      '重置密码',
+      {
+        confirmButtonText: '确定重置',
+        cancelButtonText: '取消',
+        type: 'warning'
+      }
+    )
+
+    resettingUserId.value = row.id
+    const res = await adminResetPassword(row.id)
+    await ElMessageBox.alert(res.data || '密码已重置为默认值', '重置成功', {
+      confirmButtonText: '知道了',
+      type: 'success'
+    })
+    await fetchUsers()
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') {
+      throw error
+    }
+  } finally {
+    resettingUserId.value = null
   }
 }
 
@@ -426,6 +492,13 @@ onMounted(fetchUsers)
   color: #909399;
 }
 
+.table-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .pagination-wrapper {
   display: flex;
   justify-content: flex-end;
@@ -437,6 +510,10 @@ onMounted(fetchUsers)
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.role-select {
+  width: 100%;
 }
 
 .form-tip {

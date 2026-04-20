@@ -20,7 +20,7 @@ public class PostCreateRequest {
     @Size(min = 1, max = 100, message = "标题长度需在 1-100 个字符之间")
     private String title;
 
-    /** 帖子正文，支持 Markdown */
+    /** 帖子正文，优先为富文本 HTML，兼容旧 Markdown 内容 */
     @NotBlank(message = "帖子内容不能为空")
     @Size(min = 1, max = 50000, message = "内容长度不能超过 50000 个字符")
     private String content;

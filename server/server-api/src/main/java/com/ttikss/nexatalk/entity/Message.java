@@ -3,7 +3,6 @@ package com.ttikss.nexatalk.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.LocalDateTime;
@@ -49,6 +48,12 @@ public class Message {
     @TableField("deleted_at")
     private LocalDateTime deletedAt;
 
+    @TableField("sender_deleted_at")
+    private LocalDateTime senderDeletedAt;
+
+    @TableField("receiver_deleted_at")
+    private LocalDateTime receiverDeletedAt;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getConversationId() { return conversationId; }
@@ -69,4 +74,8 @@ public class Message {
     public void setCreatedAt(LocalDateTime createdAt) { this.createdAt = createdAt; }
     public LocalDateTime getDeletedAt() { return deletedAt; }
     public void setDeletedAt(LocalDateTime deletedAt) { this.deletedAt = deletedAt; }
+    public LocalDateTime getSenderDeletedAt() { return senderDeletedAt; }
+    public void setSenderDeletedAt(LocalDateTime senderDeletedAt) { this.senderDeletedAt = senderDeletedAt; }
+    public LocalDateTime getReceiverDeletedAt() { return receiverDeletedAt; }
+    public void setReceiverDeletedAt(LocalDateTime receiverDeletedAt) { this.receiverDeletedAt = receiverDeletedAt; }
 }

@@ -1,0 +1,23 @@
+{
+    email {$ACME_EMAIL}
+}
+
+{$SITE_ADDRESS} {
+    encode gzip zstd
+
+    @api path /api/*
+    reverse_proxy @api backend:8080
+
+    @ws path /ws*
+    reverse_proxy @ws backend:8080
+
+    @uploads path /uploads/*
+    reverse_proxy @uploads backend:8080
+
+    @health path /health
+    reverse_proxy @health backend:8080
+
+    root * /usr/share/caddy
+    try_files {path} /index.html
+    file_server
+}

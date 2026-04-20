@@ -39,6 +39,7 @@ class WebSocketAuthInterceptorTest {
     @Test
     void shouldRejectConnectWhenRedisTokenDoesNotMatch() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        accessor.setLeaveMutable(true);
         accessor.setNativeHeader("Authorization", "Bearer revoked-token");
         Message<byte[]> message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());
 
@@ -52,6 +53,7 @@ class WebSocketAuthInterceptorTest {
     @Test
     void shouldAttachPrincipalForValidConnect() {
         StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.CONNECT);
+        accessor.setLeaveMutable(true);
         accessor.setSessionAttributes(new HashMap<>());
         accessor.setNativeHeader("Authorization", "Bearer valid-token");
         Message<byte[]> message = MessageBuilder.createMessage(new byte[0], accessor.getMessageHeaders());

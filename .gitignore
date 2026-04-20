@@ -17,6 +17,7 @@ dist/
 
 # Env
 .env
+deploy/.env.prod
 
 # Runtime uploads
 uploads/

@@ -12,7 +12,11 @@ export const useNotificationStore = defineStore('notification', () => {
   /** 拉取最新未读数（仅统计系统通知未读，用于顶部导航徽章） */
   async function refresh() {
     const userStore = useUserStore()
-    if (!userStore.isLoggedIn) return
+    if (!userStore.isLoggedIn) {
+      unreadNotifications.value = 0
+      unreadMessages.value = 0
+      return
+    }
 
     try {
       const [nRes, mRes] = await Promise.all([

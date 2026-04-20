@@ -11,3 +11,7 @@ export const deleteConversation = (conversationId) =>
   request.delete(`/messages/conversations/${conversationId}`)
 export const clearMessages = (conversationId) =>
   request.delete(`/messages/conversations/${conversationId}/messages`)
+export const recallMessage = (messageId) =>
+  request.post(`/messages/${messageId}/recall`)
+export const deleteMessage = (messageId) =>
+  request.delete(`/messages/${messageId}`)

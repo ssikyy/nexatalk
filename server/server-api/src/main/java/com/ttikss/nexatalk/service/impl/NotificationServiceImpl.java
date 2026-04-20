@@ -1,6 +1,7 @@
 package com.ttikss.nexatalk.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.ttikss.nexatalk.common.ErrorCode;
 import com.ttikss.nexatalk.dto.SystemNotificationRequest;
@@ -15,8 +16,13 @@ import com.ttikss.nexatalk.vo.NotificationVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -29,6 +35,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class NotificationServiceImpl implements NotificationService {
+
+    private final Object systemNotificationSyncLock = new Object();
 
     private final NotificationMapper notificationMapper;
     private final UserMapper userMapper;
@@ -56,6 +64,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public PageVO<NotificationVO> listMyNotifications(Long userId, int page, int pageSize, Integer type) {
+        prepareSystemNotificationsForUser(userId, type);
         pageSize = Math.min(pageSize, 50);
 
         LambdaQueryWrapper<Notification> wrapper = new LambdaQueryWrapper<Notification>()
@@ -110,6 +119,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public long countUnread(Long userId, Integer type) {
+        prepareSystemNotificationsForUser(userId, type);
         LambdaQueryWrapper<Notification> wrapper = new LambdaQueryWrapper<Notification>()
                 .eq(Notification::getUserId, userId)
                 .eq(Notification::getIsRead, 0);
@@ -121,6 +131,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public void markAllRead(Long userId, Integer type) {
+        prepareSystemNotificationsForUser(userId, type);
         if (type == null) {
             notificationMapper.markAllRead(userId);
         } else {
@@ -165,6 +176,44 @@ public class NotificationServiceImpl implements NotificationService {
         return vo;
     }
 
+    @Override
+    public void syncSystemNotificationsForUser(Long userId) {
+        if (userId == null) {
+            return;
+        }
+
+        synchronized (systemNotificationSyncLock) {
+            normalizeLegacySystemNotifications();
+
+            Map<String, Notification> templateMap = loadSystemNotificationTemplates();
+            if (templateMap.isEmpty()) {
+                return;
+            }
+
+            Set<String> existingKeys = notificationMapper.selectList(
+                    new LambdaQueryWrapper<Notification>()
+                            .eq(Notification::getUserId, userId)
+                            .eq(Notification::getType, Notification.TYPE_SYSTEM)
+                            .orderByDesc(Notification::getCreatedAt)
+                            .orderByAsc(Notification::getId)
+            ).stream()
+                    .map(this::buildSystemNotificationKey)
+                    .collect(Collectors.toSet());
+
+            List<Notification> missingNotifications = new ArrayList<>();
+            for (Map.Entry<String, Notification> entry : templateMap.entrySet()) {
+                if (existingKeys.contains(entry.getKey())) {
+                    continue;
+                }
+                missingNotifications.add(copySystemNotificationForUser(entry.getValue(), userId));
+            }
+
+            if (!missingNotifications.isEmpty()) {
+                notificationMapper.batchInsert(missingNotifications);
+            }
+        }
+    }
+
     // ==================== 管理员接口实现 ====================
 
     /** 根据 content 与 imageUrl 推断内容类型，并规范化 content */
@@ -196,6 +245,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(rollbackFor = Exception.class)
     public void createSystemNotification(SystemNotificationRequest request) {
         normalizeRequest(request);
+        normalizeLegacySystemNotifications();
 
         // 查询所有用户ID，为每个用户创建一条通知（同一次发布共用同一 broadcastId，管理端按广播去重展示）
         List<Long> userIds = userMapper.selectList(
@@ -208,6 +258,7 @@ public class NotificationServiceImpl implements NotificationService {
         }
 
         String broadcastId = UUID.randomUUID().toString();
+        LocalDateTime createdAt = LocalDateTime.now();
 
         // 构建通知列表
         List<Notification> notifications = userIds.stream()
@@ -226,6 +277,7 @@ public class NotificationServiceImpl implements NotificationService {
                     notification.setEntityType(Notification.ENTITY_TYPE_NONE);
                     notification.setEntityId(0L);
                     notification.setBroadcastId(broadcastId);
+                    notification.setCreatedAt(createdAt);
                     return notification;
                 })
                 .collect(Collectors.toList());
@@ -238,6 +290,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Transactional(rollbackFor = Exception.class)
     public void updateSystemNotification(Long id, SystemNotificationRequest request) {
         normalizeRequest(request);
+        normalizeLegacySystemNotifications();
         Notification notification = notificationMapper.selectById(id);
         if (notification == null) {
             throw new RuntimeException("通知不存在");
@@ -259,6 +312,7 @@ public class NotificationServiceImpl implements NotificationService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteSystemNotification(Long id) {
+        normalizeLegacySystemNotifications();
         Notification notification = notificationMapper.selectById(id);
         if (notification == null) {
             return;
@@ -273,6 +327,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public Notification getSystemNotificationById(Long id) {
+        normalizeLegacySystemNotifications();
         Notification notification = notificationMapper.selectById(id);
         if (notification == null || notification.getType() == null
                 || notification.getType() != Notification.TYPE_SYSTEM) {
@@ -283,6 +338,7 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public PageVO<Notification> listSystemNotifications(int page, int pageSize) {
+        normalizeLegacySystemNotifications();
         pageSize = Math.min(pageSize, 50);
         long total = notificationMapper.countDistinctSystemNotifications();
         long offset = (long) (page - 1) * pageSize;
@@ -298,12 +354,119 @@ public class NotificationServiceImpl implements NotificationService {
 
     @Override
     public List<Notification> listPinnedNotifications() {
-        return notificationMapper.selectList(
+        normalizeLegacySystemNotifications();
+        return loadSystemNotificationTemplates().values().stream()
+                .filter(notification -> Objects.equals(notification.getIsPinned(), 1))
+                .limit(5)
+                .collect(Collectors.toList());
+    }
+
+    private void prepareSystemNotificationsForUser(Long userId, Integer type) {
+        if (userId == null) {
+            return;
+        }
+        if (type == null || Objects.equals(type, Notification.TYPE_SYSTEM)) {
+            syncSystemNotificationsForUser(userId);
+        }
+    }
+
+    private void normalizeLegacySystemNotifications() {
+        List<Notification> legacyNotifications = notificationMapper.selectList(
                 new LambdaQueryWrapper<Notification>()
                         .eq(Notification::getType, Notification.TYPE_SYSTEM)
-                        .eq(Notification::getIsPinned, 1)
-                        .orderByDesc(Notification::getCreatedAt)
-                        .last("LIMIT 5")
+                        .isNull(Notification::getBroadcastId)
+                        .orderByAsc(Notification::getCreatedAt)
+                        .orderByAsc(Notification::getId)
         );
+
+        if (legacyNotifications.isEmpty()) {
+            return;
+        }
+
+        Map<String, List<Notification>> groupedNotifications = new LinkedHashMap<>();
+        for (Notification notification : legacyNotifications) {
+            groupedNotifications
+                    .computeIfAbsent(buildLegacySystemNotificationKey(notification), key -> new ArrayList<>())
+                    .add(notification);
+        }
+
+        for (List<Notification> group : groupedNotifications.values()) {
+            if (group.isEmpty()) {
+                continue;
+            }
+            String broadcastId = "legacy-" + group.get(0).getId();
+            List<Long> ids = group.stream().map(Notification::getId).toList();
+            notificationMapper.update(
+                    null,
+                    new LambdaUpdateWrapper<Notification>()
+                            .in(Notification::getId, ids)
+                            .set(Notification::getBroadcastId, broadcastId)
+            );
+        }
+    }
+
+    private Map<String, Notification> loadSystemNotificationTemplates() {
+        Map<String, Notification> templateMap = new LinkedHashMap<>();
+        List<Notification> notifications = notificationMapper.selectList(
+                new LambdaQueryWrapper<Notification>()
+                        .eq(Notification::getType, Notification.TYPE_SYSTEM)
+                        .orderByDesc(Notification::getIsPinned)
+                        .orderByDesc(Notification::getCreatedAt)
+                        .orderByAsc(Notification::getId)
+        );
+
+        for (Notification notification : notifications) {
+            templateMap.putIfAbsent(buildSystemNotificationKey(notification), notification);
+        }
+
+        return templateMap;
+    }
+
+    private Notification copySystemNotificationForUser(Notification template, Long userId) {
+        Notification notification = new Notification();
+        notification.setUserId(userId);
+        notification.setActorId(0L);
+        notification.setType(Notification.TYPE_SYSTEM);
+        notification.setTitle(template.getTitle());
+        notification.setContent(template.getContent());
+        notification.setContentType(template.getContentType());
+        notification.setImageUrl(template.getImageUrl());
+        notification.setIsPinned(template.getIsPinned() != null ? template.getIsPinned() : 0);
+        notification.setIsBold(template.getIsBold() != null ? template.getIsBold() : 0);
+        notification.setIsRead(0);
+        notification.setEntityType(template.getEntityType() != null ? template.getEntityType() : Notification.ENTITY_TYPE_NONE);
+        notification.setEntityId(template.getEntityId() != null ? template.getEntityId() : 0L);
+        notification.setBroadcastId(template.getBroadcastId());
+        notification.setCreatedAt(template.getCreatedAt() != null ? template.getCreatedAt() : LocalDateTime.now());
+        return notification;
+    }
+
+    private String buildSystemNotificationKey(Notification notification) {
+        if (notification == null) {
+            return "";
+        }
+        String broadcastId = notification.getBroadcastId();
+        if (broadcastId != null && !broadcastId.isBlank()) {
+            return "broadcast:" + broadcastId;
+        }
+        return buildLegacySystemNotificationKey(notification);
+    }
+
+    private String buildLegacySystemNotificationKey(Notification notification) {
+        return String.join("|",
+                "legacy",
+                String.valueOf(notification.getType()),
+                safeValue(notification.getTitle()),
+                safeValue(notification.getContent()),
+                String.valueOf(notification.getContentType()),
+                safeValue(notification.getImageUrl()),
+                String.valueOf(notification.getIsPinned()),
+                String.valueOf(notification.getIsBold()),
+                String.valueOf(notification.getCreatedAt())
+        );
+    }
+
+    private String safeValue(String value) {
+        return value == null ? "" : value;
     }
 }

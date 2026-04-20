@@ -16,6 +16,7 @@ import com.ttikss.nexatalk.mapper.UserMapper;
 import com.ttikss.nexatalk.security.JwtUtil;
 import com.ttikss.nexatalk.service.FollowService;
 import com.ttikss.nexatalk.service.LikeService;
+import com.ttikss.nexatalk.service.NotificationService;
 import com.ttikss.nexatalk.service.PostService;
 import com.ttikss.nexatalk.service.UserService;
 import com.ttikss.nexatalk.util.FileUtils;
@@ -26,6 +27,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -49,6 +51,7 @@ public class UserServiceImpl implements UserService {
     private final FollowService followService;
     private final PostService postService;
     private final LikeService likeService;
+    private final NotificationService notificationService;
 
     public UserServiceImpl(UserMapper userMapper,
                            PasswordEncoder passwordEncoder,
@@ -57,7 +60,8 @@ public class UserServiceImpl implements UserService {
                            FileUtils fileUtils,
                            FollowService followService,
                            PostService postService,
-                           LikeService likeService) {
+                           LikeService likeService,
+                           NotificationService notificationService) {
         this.userMapper = userMapper;
         this.passwordEncoder = passwordEncoder;
         this.jwtUtil = jwtUtil;
@@ -66,9 +70,11 @@ public class UserServiceImpl implements UserService {
         this.followService = followService;
         this.postService = postService;
         this.likeService = likeService;
+        this.notificationService = notificationService;
     }
 
     @Override
+    @Transactional(rollbackFor = Exception.class)
     public void register(UserRegisterRequest req) {
         // 1. 检查用户名是否已存在
         Long count = userMapper.selectCount(
@@ -90,6 +96,9 @@ public class UserServiceImpl implements UserService {
         user.setRole(User.ROLE_USER);
         user.setStatus(User.STATUS_NORMAL);
         userMapper.insert(user);
+
+        // 新用户自动继承当前已有的系统通知，避免注册后通知页为空
+        notificationService.syncSystemNotificationsForUser(user.getId());
     }
 
     @Override
@@ -292,22 +301,27 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(ErrorCode.NOT_FOUND.code(), "用户不存在");
         }
 
-        // 获取操作者信息，判断是否是超级管理员
         User operator = userMapper.selectById(operatorId);
-        boolean isSuperAdmin = operator != null && operator.getRole() != null
-                && operator.getRole() == User.ROLE_SUPER_ADMIN;
-        // 目标用户是否是超级管理员
-        boolean isTargetSuperAdmin = targetUser.getRole() != null
-                && targetUser.getRole() == User.ROLE_SUPER_ADMIN;
+        if (operator == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED.code(), "当前登录状态无效");
+        }
+
+        boolean isSuperAdmin = isSuperAdmin(operator);
+        boolean isTargetSuperAdmin = isSuperAdmin(targetUser);
 
         // 超级管理员只能由超级管理员操作
         if (isTargetSuperAdmin && !isSuperAdmin) {
             throw new BusinessException(ErrorCode.FORBIDDEN.code(), "不能操作超级管理员");
         }
 
-        // 非超级管理员不能授予超级管理员权限
-        if (!isSuperAdmin && req.getRole() != null && req.getRole() == User.ROLE_SUPER_ADMIN) {
-            throw new BusinessException(ErrorCode.FORBIDDEN.code(), "只有超级管理员才能授予超级管理员权限");
+        // 任何人都不能授予超级管理员权限
+        if (req.getRole() != null && req.getRole() == User.ROLE_SUPER_ADMIN) {
+            throw new BusinessException(ErrorCode.FORBIDDEN.code(), "不能将用户设置为超级管理员");
+        }
+
+        boolean roleChanged = req.getRole() != null && !req.getRole().equals(targetUser.getRole());
+        if (roleChanged && !isSuperAdmin) {
+            throw new BusinessException(ErrorCode.FORBIDDEN.code(), "只有超级管理员才能修改用户角色");
         }
 
         LambdaUpdateWrapper<User> wrapper = new LambdaUpdateWrapper<User>()
@@ -340,17 +354,21 @@ public class UserServiceImpl implements UserService {
             throw new BusinessException(ErrorCode.NOT_FOUND.code(), "用户不存在");
         }
 
-        // 获取操作者信息，判断是否是超级管理员
         User operator = userMapper.selectById(operatorId);
-        boolean isSuperAdmin = operator != null && operator.getRole() != null
-                && operator.getRole() == User.ROLE_SUPER_ADMIN;
-        // 目标用户是否是超级管理员
-        boolean isTargetSuperAdmin = targetUser.getRole() != null
-                && targetUser.getRole() == User.ROLE_SUPER_ADMIN;
+        if (operator == null) {
+            throw new BusinessException(ErrorCode.UNAUTHORIZED.code(), "当前登录状态无效");
+        }
 
-        // 超级管理员只能由超级管理员操作
-        if (isTargetSuperAdmin && !isSuperAdmin) {
+        boolean isSuperAdmin = isSuperAdmin(operator);
+        boolean isTargetSuperAdmin = isSuperAdmin(targetUser);
+
+        // 超级管理员密码不允许被后台重置
+        if (isTargetSuperAdmin) {
             throw new BusinessException(ErrorCode.FORBIDDEN.code(), "不能重置超级管理员密码");
+        }
+
+        if (!isSuperAdmin && !isNormalUser(targetUser)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN.code(), "管理员只能重置普通用户密码");
         }
 
         // 默认密码
@@ -366,5 +384,17 @@ public class UserServiceImpl implements UserService {
         redisTemplate.delete(TOKEN_KEY_PREFIX + userId);
 
         return DEFAULT_PASSWORD;
+    }
+
+    private boolean isSuperAdmin(User user) {
+        return user != null
+                && user.getRole() != null
+                && user.getRole() == User.ROLE_SUPER_ADMIN;
+    }
+
+    private boolean isNormalUser(User user) {
+        return user != null
+                && user.getRole() != null
+                && user.getRole() == User.ROLE_USER;
     }
 }

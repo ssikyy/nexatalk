@@ -1,82 +1,83 @@
 <template>
-  <div class="create-post-page">
+  <div class="edit-post-page">
     <div class="editor-card" v-loading="pageLoading">
       <div class="editor-header">
-        <h2 class="page-title">编辑帖子</h2>
+        <div class="header-left">
+          <el-button class="back-btn" text @click="handleCancel">
+            <el-icon><ArrowLeft /></el-icon>
+          </el-button>
+          <div>
+            <h2 class="page-title">编辑帖子</h2>
+            <p class="page-subtitle">编辑页已精简为基础富文本，保留更稳定的正文能力。</p>
+          </div>
+        </div>
       </div>
 
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="0">
-        <!-- 分区选择 -->
-        <div class="section-selector">
-          <el-select v-model="form.sectionId" placeholder="选择分区" size="large">
+      <el-form ref="formRef" :model="form" :rules="rules" label-position="top">
+        <el-form-item label="选择分区" prop="sectionId">
+          <el-select
+            v-model="form.sectionId"
+            placeholder="请选择一个分区"
+            size="large"
+            class="section-select"
+          >
             <template #prefix>
               <el-icon><Folder /></el-icon>
             </template>
-            <el-option v-for="s in sections" :key="s.id" :label="s.name" :value="s.id" />
+            <el-option
+              v-for="section in sections"
+              :key="section.id"
+              :label="section.name"
+              :value="section.id"
+            >
+              <div class="section-option">
+                <span class="section-name">{{ section.name }}</span>
+                <span class="section-desc">{{ section.description }}</span>
+              </div>
+            </el-option>
           </el-select>
-        </div>
+        </el-form-item>
 
-        <!-- 标题输入 -->
-        <div class="title-input-wrapper">
-          <input
-            v-model="form.title"
-            class="title-input"
-            placeholder="请输入帖子标题..."
-            maxlength="255"
-          />
-          <span class="title-count">{{ form.title.length }}/255</span>
-        </div>
-
-        <!-- 富文本编辑器 -->
-        <div class="editor-wrapper">
-          <MdEditor
-            v-model="form.content"
-            :editorId="editorId"
-            :preview="false"
-            :toolbars="toolbars"
-            :style="{ height: editorHeight }"
-            placeholder="分享你的想法... 支持 Markdown 语法"
-            :onUploadImg="handleUploadImage"
-          />
-        </div>
-
-        <!-- 工具栏 -->
-        <div class="editor-toolbar">
-          <div class="toolbar-left">
-            <el-tooltip content="插入图片" placement="top">
-              <div class="toolbar-btn" @click="triggerImageUpload">
-                <el-icon><Picture /></el-icon>
-                <span>图片</span>
-              </div>
-            </el-tooltip>
-            <el-tooltip content="插入emoji" placement="top">
-              <div class="toolbar-btn" @click="showEmojiPicker = !showEmojiPicker">
-                <el-icon><Star /></el-icon>
-                <span>Emoji</span>
-              </div>
-            </el-tooltip>
+        <el-form-item label="标题" prop="title">
+          <div class="title-input-wrapper">
+            <input
+              v-model="form.title"
+              class="title-input"
+              placeholder="请输入有意义的标题..."
+              :maxlength="TITLE_MAX_LENGTH"
+            />
+            <span class="title-count" :class="{ 'near-limit': form.title.length > TITLE_MAX_LENGTH - 20 }">
+              {{ form.title.length }}/{{ TITLE_MAX_LENGTH }}
+            </span>
           </div>
-          <div class="toolbar-right">
-            <span class="content-hint">正文至少 10 字</span>
-          </div>
-        </div>
+        </el-form-item>
 
-        <!-- Emoji选择器 -->
-        <transition name="fade">
-          <div v-if="showEmojiPicker" class="emoji-picker-container">
-            <EmojiPicker
-              :native="true"
-              @select="handleEmojiSelect"
+        <el-form-item label="正文内容" prop="content">
+          <div class="editor-wrapper">
+            <div class="editor-note">
+              编辑页已移除 Emoji、引用、代码块、无序列表、有序列表和添加链接功能。
+            </div>
+            <PostRichTextEditor
+              ref="editorRef"
+              v-model="form.content"
+              placeholder="继续完善这篇帖子..."
+              :allow-bullet-list="false"
+              :allow-ordered-list="false"
+              :allow-blockquote="false"
+              :allow-link="false"
+              :allow-code-block="false"
+              :allow-emoji="false"
+              @images-change="handleEditorImagesChange"
             />
           </div>
-        </transition>
+        </el-form-item>
 
-        <!-- 底部操作栏 -->
         <div class="form-actions">
           <div class="actions-left">
-            <el-button @click="$router.back()">取消</el-button>
+            <span class="action-hint">支持标题、粗体、斜体、删除线和图片</span>
           </div>
           <div class="actions-right">
+            <el-button @click="handleCancel" class="cancel-btn">取消</el-button>
             <el-button @click="handleSubmit(true)" :loading="submitting" class="draft-btn">
               <el-icon><Document /></el-icon>
               存为草稿
@@ -89,52 +90,29 @@
         </div>
       </el-form>
     </div>
-
-    <!-- 隐藏的文件输入 -->
-    <input
-      ref="imageInput"
-      type="file"
-      accept="image/*"
-      multiple
-      style="display: none"
-      @change="handleImageSelect"
-    />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { MdEditor } from 'md-editor-v3'
-import 'md-editor-v3/lib/style.css'
-import EmojiPicker from 'emoji-picker-react'
-import { Document, Folder, Picture, Star, Promotion } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { ArrowLeft, Document, Folder, Promotion } from '@element-plus/icons-vue'
+import PostRichTextEditor from '@/components/post/PostRichTextEditor.vue'
 import { listSections } from '@/api/section'
 import { getPost, updatePost } from '@/api/post'
-import { uploadPostImage } from '@/api/post'
+import { TITLE_MAX_LENGTH, extractImageUrls, getMeaningfulContent } from '@/utils/postContent'
 
 const route = useRoute()
 const router = useRouter()
 const postId = Number(route.params.id)
 
 const formRef = ref()
+const editorRef = ref(null)
 const submitting = ref(false)
 const pageLoading = ref(false)
 const sections = ref([])
-const showEmojiPicker = ref(false)
-const loadedDraftId = ref(null)
-
-// 编辑器配置
-const editorId = 'post-editor-edit'
-const editorHeight = '400px'
-const toolbars = [
-  'bold', 'italic', 'strikeThrough', '-',
-  'title', 'quote', 'unorderedList', 'orderedList', '-',
-  'code', 'codeRow', 'link', 'image', '-',
-  'revoke', 'next', '=',
-  'pageFullscreen', 'fullscreen', 'preview', 'catalog'
-]
+const initialSnapshot = ref('')
 
 const form = ref({
   sectionId: null,
@@ -144,419 +122,312 @@ const form = ref({
   draft: false
 })
 
-// 上传的图片列表
 const uploadedImages = ref([])
 
 const rules = {
   sectionId: [{ required: true, message: '请选择分区', trigger: 'change' }],
   title: [
     { required: true, message: '请输入标题', trigger: 'blur' },
-    { min: 5, max: 255, message: '标题长度为 5-255 字', trigger: 'blur' }
+    { min: 5, max: TITLE_MAX_LENGTH, message: `标题长度为 5-${TITLE_MAX_LENGTH} 个字符`, trigger: 'blur' }
   ],
   content: [
-    { required: true, message: '请输入正文', trigger: 'blur' },
-    { min: 10, message: '正文至少 10 字', trigger: 'blur' }
+    {
+      validator: (_, value, callback) => {
+        const { text, images } = getMeaningfulContent(value)
+        if (!text && images.length === 0) {
+          callback(new Error('请输入正文内容或至少插入一张图片'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur'
+    }
   ]
 }
 
-// 图片上传
-const imageInput = ref(null)
-
-function triggerImageUpload() {
-  imageInput.value?.click()
+function buildSnapshot() {
+  return JSON.stringify({
+    sectionId: form.value.sectionId,
+    title: form.value.title.trim(),
+    content: form.value.content,
+    images: extractImageUrls(form.value.content),
+    draft: !!form.value.draft
+  })
 }
 
-async function handleImageSelect(event) {
-  const files = Array.from(event.target.files)
-  if (files.length === 0) return
-
-  const remainingSlots = 9 - uploadedImages.value.length
-  const filesToUpload = files.slice(0, remainingSlots)
-
-  for (const file of filesToUpload) {
-    // 验证文件大小 (10MB)
-    if (file.size > 10 * 1024 * 1024) {
-      ElMessage.warning(`${file.name} 超过10MB限制`)
-      continue
-    }
-
-    // 验证文件类型
-    if (!file.type.startsWith('image/')) {
-      ElMessage.warning(`${file.name} 不是图片文件`)
-      continue
-    }
-
-    try {
-      const res = await uploadPostImage(file)
-      const url = res.data
-      uploadedImages.value.push(url)
-      // 同时将 Markdown 图片语法插入到正文中
-      const markdownImage = `![image](${url})\n`
-      form.value.content += markdownImage
-    } catch (error) {
-      ElMessage.error(`上传 ${file.name} 失败`)
-    }
-  }
-
-  // 清空input以允许重新选择相同文件
-  event.target.value = ''
+function syncEditorContent(content = '') {
+  editorRef.value?.setContent(content)
+  uploadedImages.value = extractImageUrls(content)
 }
 
-function handleEmojiSelect(emoji) {
-  form.value.content += emoji.emoji
-  showEmojiPicker.value = false
+function handleEditorImagesChange(images) {
+  uploadedImages.value = images
 }
 
-async function handleUploadImage(files, callback) {
-  const urls = []
-
-  for (const file of files) {
-    try {
-      const res = await uploadPostImage(file)
-      const url = res.data
-      urls.push(url)
-      if (!uploadedImages.value.includes(url)) {
-        uploadedImages.value.push(url)
-      }
-    } catch (error) {
-      ElMessage.error('图片上传失败')
-    }
-  }
-
-  if (urls.length > 0) {
-    callback(urls)
-  }
-}
-
-onMounted(async () => {
+async function loadPageData() {
   pageLoading.value = true
-
   try {
-    // 加载分区
-    const sRes = await listSections()
-    sections.value = sRes.data || []
+    const [sectionRes, postRes] = await Promise.all([
+      listSections(),
+      getPost(postId)
+    ])
 
-    // 加载帖子详情
-    const pRes = await getPost(postId)
-    const post = pRes.data
+    sections.value = sectionRes.data || []
+
+    const post = postRes.data
+    const content = typeof post.content === 'string' ? post.content : ''
+    const images = Array.isArray(post.images) && post.images.length > 0
+      ? post.images
+      : extractImageUrls(content)
 
     form.value = {
       sectionId: post.sectionId,
-      title: post.title,
-      content: post.content,
-      images: post.images || [],
+      title: post.title || '',
+      content,
+      images,
       draft: post.status === 1
     }
-    uploadedImages.value = post.images || []
+
+    syncEditorContent(content)
+    initialSnapshot.value = buildSnapshot()
   } finally {
     pageLoading.value = false
-  }
-
-  // 点击外部关闭emoji选择器
-  document.addEventListener('click', handleClickOutside)
-})
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
-
-function handleClickOutside(e) {
-  if (showEmojiPicker.value && !e.target.closest('.toolbar-btn') && !e.target.closest('.emoji-picker-container')) {
-    showEmojiPicker.value = false
   }
 }
 
 async function handleSubmit(asDraft) {
-  await formRef.value.validate()
+  try {
+    await formRef.value.validate()
+  } catch {
+    ElMessage.warning('请完善帖子信息')
+    return
+  }
+
   submitting.value = true
 
   try {
     form.value.draft = asDraft
-    form.value.images = uploadedImages.value
+    form.value.images = extractImageUrls(form.value.content)
 
-    const submitData = {
+    await updatePost(postId, {
       sectionId: form.value.sectionId,
       title: form.value.title,
       content: form.value.content,
       images: form.value.images,
       draft: form.value.draft
+    })
+
+    initialSnapshot.value = buildSnapshot()
+    ElMessage.success(asDraft ? '草稿保存成功' : '帖子保存成功')
+
+    if (asDraft) {
+      return
     }
 
-    await updatePost(postId, submitData)
-    ElMessage.success(asDraft ? '草稿保存成功' : '保存成功')
     router.push(`/posts/${postId}`)
   } catch (error) {
-    ElMessage.error(asDraft ? '保存草稿失败' : '保存失败')
+    ElMessage.error(error?.message || (asDraft ? '保存草稿失败' : '保存失败'))
   } finally {
     submitting.value = false
   }
 }
+
+function handleCancel() {
+  if (buildSnapshot() === initialSnapshot.value) {
+    router.back()
+    return
+  }
+
+  ElMessageBox.confirm('内容尚未保存，确定要返回吗？', '提示', {
+    confirmButtonText: '返回',
+    cancelButtonText: '继续编辑',
+    type: 'warning'
+  }).then(() => {
+    router.back()
+  }).catch(() => {})
+}
+
+onMounted(async () => {
+  await loadPageData()
+})
 </script>
 
 <style scoped>
-.create-post-page {
-  max-width: 900px;
+.edit-post-page {
+  max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 24px;
+  min-height: 100vh;
+  background: #f5f7fa;
 }
 
 .editor-card {
   background: #fff;
-  border-radius: 16px;
-  padding: 24px;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+  border-radius: 18px;
+  padding: 28px 32px;
+  border: 1px solid #e4e7ed;
+  box-shadow: 0 6px 24px rgba(15, 23, 42, 0.06);
 }
 
 .editor-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 28px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.back-btn {
+  font-size: 20px;
+  color: #64748b;
+}
+
+.back-btn:hover {
+  color: #3b82f6;
 }
 
 .page-title {
-  font-size: 22px;
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.page-subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: #94a3b8;
+}
+
+.section-select {
+  width: 100%;
+  max-width: 340px;
+}
+
+.section-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.section-name {
   font-weight: 600;
   color: #1e293b;
-  margin: 0;
 }
 
-.section-selector {
-  margin-bottom: 16px;
-}
-
-.section-selector :deep(.el-select) {
-  width: 200px;
+.section-desc {
+  color: #94a3b8;
+  font-size: 13px;
 }
 
 .title-input-wrapper {
   position: relative;
-  margin-bottom: 16px;
 }
 
 .title-input {
   width: 100%;
-  padding: 16px 60px 16px 16px;
+  padding: 16px 72px 16px 16px;
+  border: 1px solid #dbe4ee;
+  border-radius: 14px;
   font-size: 20px;
   font-weight: 600;
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
+  color: #0f172a;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .title-input:focus {
-  border-color: #3b82f6;
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.12);
 }
 
 .title-count {
   position: absolute;
-  right: 16px;
   top: 50%;
+  right: 16px;
   transform: translateY(-50%);
-  font-size: 13px;
   color: #94a3b8;
+  font-size: 13px;
+}
+
+.title-count.near-limit {
+  color: #f59e0b;
 }
 
 .editor-wrapper {
-  border: 2px solid #e2e8f0;
-  border-radius: 12px;
   overflow: hidden;
-  margin-bottom: 12px;
+  background: #fff;
 }
 
-.editor-wrapper :deep(.md-editor) {
-  border: none;
-}
-
-.editor-wrapper :deep(.md-editor-toolbar) {
-  border-bottom: 1px solid #e2e8f0;
-}
-
-.editor-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 0;
-  border-bottom: 1px solid #e2e8f0;
-  margin-bottom: 12px;
-}
-
-.toolbar-left {
-  display: flex;
-  gap: 8px;
-}
-
-.toolbar-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: #64748b;
+.editor-note {
+  padding: 14px 18px;
+  background: linear-gradient(180deg, #fffbeb 0%, #fff7ed 100%);
+  border-bottom: 1px solid #fde7c2;
+  color: #9a6b16;
   font-size: 14px;
-  transition: all 0.2s;
-}
-
-.toolbar-btn:hover {
-  background: #f1f5f9;
-  color: #3b82f6;
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-}
-
-.content-hint {
-  font-size: 13px;
-  color: #94a3b8;
-}
-
-.emoji-picker-container {
-  position: absolute;
-  z-index: 100;
-  margin-top: 8px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-.uploaded-images {
-  margin: 16px 0;
-  padding: 16px;
-  background: #f8fafc;
-  border-radius: 12px;
-}
-
-.images-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-}
-
-.images-title {
-  font-size: 14px;
-  font-weight: 500;
-  color: #475569;
-}
-
-.image-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.image-item {
-  position: relative;
-  width: 100px;
-  height: 100px;
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.image-item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.image-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.image-item:hover .image-overlay {
-  opacity: 1;
-}
-
-.add-more {
-  width: 100px;
-  height: 100px;
-  border: 2px dashed #cbd5e1;
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #94a3b8;
-  font-size: 12px;
-  transition: all 0.2s;
-}
-
-.add-more:hover {
-  border-color: #3b82f6;
-  color: #3b82f6;
 }
 
 .form-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 20px;
-  padding-top: 20px;
-  border-top: 1px solid #e2e8f0;
+  gap: 16px;
+  margin-top: 28px;
+  padding-top: 24px;
+  border-top: 1px solid #eef2f7;
 }
 
 .actions-left {
-  display: flex;
-  align-items: center;
+  color: #94a3b8;
+  font-size: 14px;
 }
 
 .actions-right {
   display: flex;
+  align-items: center;
   gap: 12px;
 }
 
-.draft-btn :deep(.el-icon) {
-  margin-right: 4px;
-}
-
-.publish-btn :deep(.el-icon) {
-  margin-right: 4px;
+.cancel-btn,
+.draft-btn,
+.publish-btn {
+  min-width: 116px;
+  height: 44px;
+  border-radius: 12px;
 }
 
 @media (max-width: 768px) {
-  .create-post-page {
-    padding: 12px;
-  }
-
-  .editor-card {
+  .edit-post-page {
     padding: 16px;
   }
 
-  .title-input {
-    font-size: 18px;
+  .editor-card {
+    padding: 20px;
   }
 
+  .editor-header,
   .form-actions {
     flex-direction: column;
-    gap: 12px;
+    align-items: stretch;
   }
 
   .actions-right {
     width: 100%;
-    justify-content: flex-end;
+    justify-content: space-between;
+  }
+
+  .cancel-btn,
+  .draft-btn,
+  .publish-btn {
+    flex: 1;
+    min-width: 0;
   }
 }
 </style>
