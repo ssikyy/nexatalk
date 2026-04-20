@@ -3,7 +3,6 @@ package com.ttikss.nexatalk.entity;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 
 import java.time.LocalDateTime;
@@ -55,6 +54,18 @@ public class Conversation {
     @TableField("deleted_at")
     private LocalDateTime deletedAt;
 
+    @TableField("user1_deleted_at")
+    private LocalDateTime user1DeletedAt;
+
+    @TableField("user2_deleted_at")
+    private LocalDateTime user2DeletedAt;
+
+    @TableField("user1_cleared_at")
+    private LocalDateTime user1ClearedAt;
+
+    @TableField("user2_cleared_at")
+    private LocalDateTime user2ClearedAt;
+
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public Long getUser1Id() { return user1Id; }
@@ -77,4 +88,12 @@ public class Conversation {
     public void setDeletedAt(LocalDateTime deletedAt) { this.deletedAt = deletedAt; }
     public Integer getIsPinned() { return isPinned; }
     public void setIsPinned(Integer isPinned) { this.isPinned = isPinned; }
+    public LocalDateTime getUser1DeletedAt() { return user1DeletedAt; }
+    public void setUser1DeletedAt(LocalDateTime user1DeletedAt) { this.user1DeletedAt = user1DeletedAt; }
+    public LocalDateTime getUser2DeletedAt() { return user2DeletedAt; }
+    public void setUser2DeletedAt(LocalDateTime user2DeletedAt) { this.user2DeletedAt = user2DeletedAt; }
+    public LocalDateTime getUser1ClearedAt() { return user1ClearedAt; }
+    public void setUser1ClearedAt(LocalDateTime user1ClearedAt) { this.user1ClearedAt = user1ClearedAt; }
+    public LocalDateTime getUser2ClearedAt() { return user2ClearedAt; }
+    public void setUser2ClearedAt(LocalDateTime user2ClearedAt) { this.user2ClearedAt = user2ClearedAt; }
 }

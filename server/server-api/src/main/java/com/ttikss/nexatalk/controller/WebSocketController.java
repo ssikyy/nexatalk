@@ -87,6 +87,7 @@ public class WebSocketController {
             notification.put("conversationId", conversationId);
             notification.put("senderId", senderId);
             notification.put("senderNickname", sender != null ? sender.getNickname() : "未知用户");
+            notification.put("senderUsername", sender != null ? sender.getUsername() : "");
             notification.put("senderAvatar", sender != null ? sender.getAvatarUrl() : "");
             notification.put("isTyping", isTyping);
 

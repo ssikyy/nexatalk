@@ -1,17 +1,16 @@
 <template>
   <div class="post-detail-container" v-loading="loading">
-    <!-- 返回按钮 -->
-    <div class="back-nav">
-      <el-button class="back-btn" text @click="$router.back()">
-        <el-icon><ArrowLeft /></el-icon>
-        返回
-      </el-button>
-    </div>
-
     <!-- 帖子主体 -->
     <div class="post-main" v-if="post">
       <!-- 作者信息大卡片 -->
       <div class="post-author-card">
+        <div class="post-toolbar">
+          <button class="inline-back-btn" type="button" @click="router.back()">
+            <el-icon><ArrowLeft /></el-icon>
+            <span>返回</span>
+          </button>
+        </div>
+
         <div class="post-header-row">
           <div class="author-header" @click="$router.push(`/user/${post.authorId || post.userId}`)">
             <el-avatar :src="post.authorAvatar" :size="56" class="author-avatar">
@@ -66,18 +65,14 @@
           </div>
           
           <!-- 统计数据 -->
-          <div class="post-stats">
-            <div class="stat-item" v-if="post.commentCount">
-              <span class="stat-value">{{ post.commentCount }}</span>
-              <span class="stat-label">回复</span>
-            </div>
-            <div class="stat-item" v-if="post.likeCount">
-              <span class="stat-value">{{ post.likeCount }}</span>
-              <span class="stat-label">喜欢</span>
-            </div>
-            <div class="stat-item" v-if="post.favoriteCount">
-              <span class="stat-value">{{ post.favoriteCount }}</span>
-              <span class="stat-label">收藏</span>
+          <div class="post-stats" v-if="visibleStats.length > 0">
+            <div
+              v-for="stat in visibleStats"
+              :key="stat.label"
+              class="stat-item"
+            >
+              <span class="stat-value">{{ stat.value }}</span>
+              <span class="stat-label">{{ stat.label }}</span>
             </div>
           </div>
         </div>
@@ -211,6 +206,20 @@ const favorited = ref(false)
 const newCommentId = ref(null)
 
 const hasMoreComments = computed(() => comments.value.length < commentTotal.value)
+
+const visibleStats = computed(() => {
+  if (!post.value) return []
+
+  const replyCount = commentTotal.value > 0
+    ? commentTotal.value
+    : Number(post.value.commentCount || 0)
+
+  return [
+    { label: '回复', value: replyCount },
+    { label: '喜欢', value: Number(post.value.likeCount || 0) },
+    { label: '收藏', value: Number(post.value.favoriteCount || 0) }
+  ].filter((stat) => stat.value > 0)
+})
 
 // 图片预览相关
 const imagePreviewVisible = ref(false)
@@ -425,24 +434,6 @@ async function toggleFavorite() {
   background: var(--bg-body);
 }
 
-.back-nav {
-  max-width: var(--max-content-width);
-  margin: 0 auto;
-  padding: 12px 16px;
-}
-
-.back-btn {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 14px;
-  color: var(--text-secondary);
-}
-
-.back-btn:hover {
-  color: var(--color-primary);
-}
-
 .post-main {
   max-width: var(--max-content-width);
   margin: 16px auto 24px;
@@ -457,6 +448,31 @@ async function toggleFavorite() {
 .post-author-card {
   padding: 16px;
   border-bottom: 1px solid var(--border-color);
+}
+
+.post-toolbar {
+  margin-bottom: 10px;
+}
+
+.inline-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: color 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.inline-back-btn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: var(--bg-hover);
 }
 
 .post-header-row {
@@ -750,6 +766,7 @@ async function toggleFavorite() {
 /* Post Stats */
 .post-stats {
   display: flex;
+  flex-wrap: wrap;
   gap: 24px;
   padding: 12px 0;
   border-bottom: 1px solid var(--border-color);
@@ -949,6 +966,14 @@ async function toggleFavorite() {
 
 /* Responsive */
 @media (max-width: 640px) {
+  .post-main {
+    margin-top: 12px;
+  }
+
+  .post-author-card {
+    padding: 14px;
+  }
+
   .post-content-area {
     padding-left: 0;
   }

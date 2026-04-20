@@ -21,6 +21,7 @@ public class ConversationVO {
     private Long opponentId;
     private String opponentNickname;
     private String opponentAvatar;
+    private String opponentUsername;
 
     /** 是否置顶 */
     private Boolean isPinned;
@@ -54,6 +55,9 @@ public class ConversationVO {
 
     public String getOpponentAvatar() { return opponentAvatar; }
     public void setOpponentAvatar(String opponentAvatar) { this.opponentAvatar = opponentAvatar; }
+
+    public String getOpponentUsername() { return opponentUsername; }
+    public void setOpponentUsername(String opponentUsername) { this.opponentUsername = opponentUsername; }
 
     public Boolean getIsPinned() { return isPinned; }
     public void setIsPinned(Boolean isPinned) { this.isPinned = isPinned; }
@@ -89,6 +93,7 @@ public class ConversationVO {
             vo.setOpponentId(opponent.getId());
             vo.setOpponentNickname(opponent.getNickname());
             vo.setOpponentAvatar(opponent.getAvatarUrl());
+            vo.setOpponentUsername(opponent.getUsername());
         }
 
         // 设置置顶状态

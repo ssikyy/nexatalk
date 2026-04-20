@@ -80,6 +80,14 @@ public interface NotificationService {
      */
     NotificationVO getMyNotificationDetail(Long userId, Long notificationId);
 
+    /**
+     * 同步当前用户缺失的系统通知。
+     * 用于新用户注册后的历史公告补齐，以及旧账号的漏同步自修复。
+     *
+     * @param userId 用户 ID
+     */
+    void syncSystemNotificationsForUser(Long userId);
+
     // ==================== 管理员接口 ====================
 
     /**

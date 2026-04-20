@@ -64,7 +64,7 @@ public class MessageController {
         return Result.ok(messageService.listMyConversations(userId, page, pageSize));
     }
 
-    /** 查询某会话的消息记录 */
+    /** 查询某会话的消息记录（第 1 页返回最新一页消息） */
     @GetMapping("/conversations/{conversationId}")
     public Result<PageVO<Message>> listMessages(
             @CurrentUser Long userId,
@@ -88,7 +88,7 @@ public class MessageController {
         return Result.ok(messageService.countTotalUnread(userId));
     }
 
-    /** 删除指定会话（删除会话及其所有消息） */
+    /** 本地删除指定会话，仅移除当前用户视角 */
     @DeleteMapping("/conversations/{conversationId}")
     public Result<String> deleteConversation(@CurrentUser Long userId,
                                              @PathVariable Long conversationId) {
@@ -96,7 +96,7 @@ public class MessageController {
         return Result.ok("会话已删除");
     }
 
-    /** 清空指定会话的所有消息记录（保留会话） */
+    /** 本地清空指定会话的消息记录（保留会话） */
     @DeleteMapping("/conversations/{conversationId}/messages")
     public Result<String> clearMessages(@CurrentUser Long userId,
                                         @PathVariable Long conversationId) {
@@ -112,7 +112,7 @@ public class MessageController {
         return Result.ok("消息已撤回");
     }
 
-    /** 删除单条消息 */
+    /** 本地删除单条消息，仅对当前用户隐藏 */
     @DeleteMapping("/{messageId}")
     public Result<String> deleteMessage(@CurrentUser Long userId,
                                         @PathVariable Long messageId) {

@@ -22,7 +22,7 @@
 
 1. 把服务器系统准备好 Docker 和 Docker Compose。
 2. 确保 GCP 防火墙放行 `22`、`80`、`443`。
-3. 确保域名 `sslovett.top` 已解析到服务器公网 IP。
+3. 确保你的域名已经解析到服务器公网 IP。
 
 ## 服务器上的部署目录
 
@@ -47,6 +47,7 @@ vim deploy/.env.prod
 
 至少需要改这些值：
 
+- `SITE_ADDRESS`
 - `ACME_EMAIL`
 - `MYSQL_PASSWORD`
 - `MYSQL_ROOT_PASSWORD`
@@ -95,8 +96,8 @@ sh deploy/update-on-server.sh
 
 ## 验证点
 
-- 首页是否能通过 `https://sslovett.top` 打开
-- `https://sslovett.top/health` 是否返回后端健康响应
+- 首页是否能通过 `https://你的域名` 打开
+- `https://你的域名/health` 是否返回后端健康响应
 - 登录、发帖、图片上传、WebSocket 私信是否正常
 
 ## 下一步建议

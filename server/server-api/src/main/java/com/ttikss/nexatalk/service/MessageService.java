@@ -35,7 +35,8 @@ public interface MessageService {
     PageVO<ConversationVO> listMyConversations(Long userId, int page, int pageSize);
 
     /**
-     * 查询某会话的消息记录（按时间升序，适合聊天界面加载）
+     * 查询某会话的消息记录。
+     * 第 1 页返回最近一页消息，并在页内按时间升序排列，便于聊天窗口直接渲染。
      *
      * @param userId         当前用户 ID（用于鉴权）
      * @param conversationId 会话 ID
@@ -60,7 +61,8 @@ public interface MessageService {
     long countTotalUnread(Long userId);
 
     /**
-     * 删除指定会话（删除会话及其所有消息）
+     * 本地删除指定会话。
+     * 仅移除当前用户视角下的会话入口，不影响对方历史记录。
      *
      * @param userId         当前用户 ID
      * @param conversationId 会话 ID
@@ -68,7 +70,8 @@ public interface MessageService {
     void deleteConversation(Long userId, Long conversationId);
 
     /**
-     * 清空指定会话的所有消息记录（保留会话）
+     * 本地清空指定会话的消息记录（保留会话入口）。
+     * 仅影响当前用户视角，不影响对方历史记录。
      *
      * @param userId         当前用户 ID
      * @param conversationId 会话 ID
@@ -84,7 +87,7 @@ public interface MessageService {
     void recallMessage(Long userId, Long messageId);
 
     /**
-     * 删除单条消息
+     * 本地删除单条消息，仅对当前用户隐藏。
      *
      * @param userId    当前用户 ID
      * @param messageId 消息 ID

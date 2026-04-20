@@ -107,14 +107,16 @@ public interface UserService {
      * @param page     当前页码
      * @param pageSize 每页数量
      * @param username 用户名（可选，模糊搜索）
-     * @param role     角色筛选（0=普通用户, 1=管理员）
+     * @param role     角色筛选（0=普通用户, 1=管理员, 2=超级管理员）
      * @param status   状态筛选（0=正常, 1=禁言, 2=封禁）
      * @return 分页用户列表
      */
     IPage<UserVO> adminListUsers(int page, int pageSize, String username, Integer role, Integer status);
 
     /**
-     * 管理员修改用户信息（可以修改角色和状态）
+     * 管理员修改用户信息
+     * 超级管理员可在普通用户 / 管理员之间切换角色
+     * 管理员仅可更新基础资料，不可改角色
      *
      * @param operatorId 操作者（当前管理员）ID
      * @param userId 目标用户 ID
@@ -124,6 +126,7 @@ public interface UserService {
 
     /**
      * 管理员重置用户密码为默认密码
+     * 管理员仅可重置普通用户，超级管理员可重置普通用户与管理员
      *
      * @param operatorId 操作者（当前管理员）ID
      * @param userId 目标用户 ID

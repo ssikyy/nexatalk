@@ -51,10 +51,10 @@
               v-model="form.title"
               class="title-input"
               placeholder="请输入有意义的标题..."
-              maxlength="255"
+              :maxlength="TITLE_MAX_LENGTH"
             />
-            <span class="title-count" :class="{ 'near-limit': form.title.length > 200 }">
-              {{ form.title.length }}/255
+            <span class="title-count" :class="{ 'near-limit': form.title.length > TITLE_MAX_LENGTH - 20 }">
+              {{ form.title.length }}/{{ TITLE_MAX_LENGTH }}
             </span>
           </div>
         </el-form-item>
@@ -64,135 +64,80 @@
             <div class="editor-wrapper">
               <!-- AI 润色工具栏 -->
               <div class="ai-toolbar">
-                <el-dropdown trigger="click" @command="(cmd) => handlePolish(cmd)" :disabled="!aiEnabled || polishing">
-                  <el-button
-                    size="small"
-                    type="primary"
-                    :loading="polishing"
-                    :disabled="!aiEnabled"
-                    class="ai-polish-btn"
-                  >
-                    <el-icon><MagicStick /></el-icon>
-                    {{ polishing ? '润色中...' : 'AI 润色' }}
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="style in polishStyles"
-                        :key="style.value"
-                        :command="style.value"
-                        :disabled="polishing"
-                      >
-                        <div class="style-option">
-                          <span class="style-label">{{ style.label }}</span>
-                          <span class="style-desc">{{ style.desc }}</span>
-                        </div>
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-                <el-dropdown trigger="click" @command="(cmd) => handleExpand(cmd)" :disabled="!aiEnabled || expanding">
-                  <el-button
-                    size="small"
-                    type="success"
-                    :loading="expanding"
-                    :disabled="!aiEnabled"
-                    class="ai-expand-btn"
-                  >
-                    <el-icon><Grid /></el-icon>
-                    {{ expanding ? '扩写中...' : 'AI 扩写' }}
-                  </el-button>
-                  <template #dropdown>
-                    <el-dropdown-menu>
-                      <el-dropdown-item
-                        v-for="style in expandStyles"
-                        :key="style.value"
-                        :command="style.value"
-                        :disabled="expanding"
-                      >
-                        <div class="style-option">
-                          <span class="style-label">{{ style.label }}</span>
-                          <span class="style-desc">{{ style.desc }}</span>
-                        </div>
-                      </el-dropdown-item>
-                    </el-dropdown-menu>
-                  </template>
-                </el-dropdown>
-                <span v-if="!aiEnabled" class="ai-hint">AI 功能未开启</span>
+                <div class="ai-toolbar-copy">
+                  <span class="ai-toolbar-title">AI 写作助手</span>
+                </div>
+                <div class="ai-toolbar-actions">
+                  <el-dropdown trigger="click" @command="(cmd) => handlePolish(cmd)" :disabled="!aiEnabled || polishing">
+                    <el-button
+                      size="large"
+                      type="primary"
+                      :loading="polishing"
+                      :disabled="!aiEnabled"
+                      class="ai-polish-btn"
+                    >
+                      <el-icon><MagicStick /></el-icon>
+                      {{ polishing ? '润色中...' : 'AI 润色' }}
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item
+                          v-for="style in polishStyles"
+                          :key="style.value"
+                          :command="style.value"
+                          :disabled="polishing"
+                        >
+                          <div class="style-option">
+                            <span class="style-label">{{ style.label }}</span>
+                            <span class="style-desc">{{ style.desc }}</span>
+                          </div>
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                  <el-dropdown trigger="click" @command="(cmd) => handleExpand(cmd)" :disabled="!aiEnabled || expanding">
+                    <el-button
+                      size="large"
+                      type="success"
+                      :loading="expanding"
+                      :disabled="!aiEnabled"
+                      class="ai-expand-btn"
+                    >
+                      <el-icon><Grid /></el-icon>
+                      {{ expanding ? '扩写中...' : 'AI 扩写' }}
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item
+                          v-for="style in expandStyles"
+                          :key="style.value"
+                          :command="style.value"
+                          :disabled="expanding"
+                        >
+                          <div class="style-option">
+                            <span class="style-label">{{ style.label }}</span>
+                            <span class="style-desc">{{ style.desc }}</span>
+                          </div>
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
               </div>
 
-              <!-- Tiptap 富文本编辑器 -->
-              <div class="tiptap-editor">
-                <div class="tiptap-toolbar">
-                  <el-tooltip content="粗体" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleBold().run()" :class="{ 'is-active': editor?.isActive('bold') }"><strong>B</strong></button>
-                    </div>
-                  </el-tooltip>
-                  <el-tooltip content="斜体" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleItalic().run()" :class="{ 'is-active': editor?.isActive('italic') }"><em>I</em></button>
-                    </div>
-                  </el-tooltip>
-                  <el-tooltip content="删除线" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleStrike().run()" :class="{ 'is-active': editor?.isActive('strike') }"><s>S</s></button>
-                    </div>
-                  </el-tooltip>
-                  <span class="toolbar-divider">|</span>
-                  <el-tooltip content="标题1" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleHeading({ level: 1 }).run()" :class="{ 'is-active': editor?.isActive('heading', { level: 1 }) }">H1</button>
-                    </div>
-                  </el-tooltip>
-                  <el-tooltip content="标题2" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleHeading({ level: 2 }).run()" :class="{ 'is-active': editor?.isActive('heading', { level: 2 }) }">H2</button>
-                    </div>
-                  </el-tooltip>
-                  <el-tooltip content="标题3" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleHeading({ level: 3 }).run()" :class="{ 'is-active': editor?.isActive('heading', { level: 3 }) }">H3</button>
-                    </div>
-                  </el-tooltip>
-                  <span class="toolbar-divider">|</span>
-                  <el-tooltip content="无序列表" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleBulletList().run()" :class="{ 'is-active': editor?.isActive('bulletList') }">•</button>
-                    </div>
-                  </el-tooltip>
-                  <el-tooltip content="有序列表" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleOrderedList().run()" :class="{ 'is-active': editor?.isActive('orderedList') }">1.</button>
-                    </div>
-                  </el-tooltip>
-                  <el-tooltip content="引用" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleBlockquote().run()" :class="{ 'is-active': editor?.isActive('blockquote') }">"</button>
-                    </div>
-                  </el-tooltip>
-                  <span class="toolbar-divider">|</span>
-                  <el-tooltip content="添加链接" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="addLink">🔗</button>
-                    </div>
-                  </el-tooltip>
-                  <el-tooltip :content="imageUploading ? '上传中...' : '添加图片'" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="addImage" :disabled="imageUploading">
-                        <span v-if="imageUploading" class="loading-spinner"></span>
-                        <span v-else>🖼️</span>
-                      </button>
-                    </div>
-                  </el-tooltip>
-                  <el-tooltip content="代码块" placement="top" :show-after="300">
-                    <div class="toolbar-btn-wrapper">
-                      <button type="button" @click="editor?.chain().focus().toggleCodeBlock().run()" :class="{ 'is-active': editor?.isActive('codeBlock') }">&lt;&gt;</button>
-                    </div>
-                  </el-tooltip>
-                </div>
-                <editor-content :editor="editor" class="tiptap-content" />
-              </div>
+              <PostRichTextEditor
+                ref="editorRef"
+                v-model="form.content"
+                placeholder="分享你的想法..."
+                :min-height="340"
+                :allow-bullet-list="false"
+                :allow-ordered-list="false"
+                :allow-blockquote="false"
+                :allow-link="false"
+                :allow-code-block="false"
+                :allow-emoji="false"
+                @images-change="handleEditorImagesChange"
+              />
             </div>
         </el-form-item>
 
@@ -244,30 +189,44 @@
     <el-dialog
       v-model="showPolishDialog"
       title="润色结果对比"
-      width="800px"
+      width="1040px"
       destroy-on-close
       class="polish-dialog"
+      :close-on-click-modal="false"
     >
       <div class="polish-comparison">
-        <div class="comparison-panel">
+        <div class="comparison-panel comparison-panel-before">
           <div class="comparison-header">
-            <span class="comparison-title">原文</span>
+            <div class="comparison-header-main">
+              <span class="comparison-badge">原文</span>
+              <span class="comparison-title">当前正文</span>
+            </div>
+            <span class="comparison-meta">{{ originalPreviewContent.length }} 字</span>
           </div>
-          <div class="comparison-content">{{ originalContent }}</div>
+          <div class="comparison-content">{{ originalPreviewContent || '暂无内容' }}</div>
         </div>
         <div class="comparison-divider">
           <el-icon><Right /></el-icon>
         </div>
-        <div class="comparison-panel">
+        <div class="comparison-panel comparison-panel-after">
           <div class="comparison-header">
-            <span class="comparison-title">润色后</span>
+            <div class="comparison-header-main">
+              <span class="comparison-badge comparison-badge-polish">润色后</span>
+              <span class="comparison-title">优化建议</span>
+            </div>
+            <span class="comparison-meta">{{ polishedPreviewContent.length }} 字</span>
           </div>
-          <div class="comparison-content">{{ polishedContent }}</div>
+          <div class="comparison-content">{{ polishedPreviewContent || '暂无内容' }}</div>
         </div>
       </div>
       <template #footer>
-        <el-button @click="cancelPolish">保留原文</el-button>
-        <el-button type="primary" @click="confirmPolish">使用润色</el-button>
+        <div class="comparison-footer">
+          <div class="comparison-footer-tip">确认后会直接替换正文内容。</div>
+          <div class="comparison-footer-actions">
+            <el-button @click="cancelPolish" class="comparison-cancel-btn">保留原文</el-button>
+            <el-button type="primary" @click="confirmPolish" class="comparison-confirm-btn">使用润色</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
 
@@ -275,30 +234,44 @@
     <el-dialog
       v-model="showExpandDialog"
       title="扩写结果对比"
-      width="800px"
+      width="1040px"
       destroy-on-close
       class="polish-dialog"
+      :close-on-click-modal="false"
     >
       <div class="polish-comparison">
-        <div class="comparison-panel">
+        <div class="comparison-panel comparison-panel-before">
           <div class="comparison-header">
-            <span class="comparison-title">原文</span>
+            <div class="comparison-header-main">
+              <span class="comparison-badge">原文</span>
+              <span class="comparison-title">当前正文</span>
+            </div>
+            <span class="comparison-meta">{{ originalPreviewContent.length }} 字</span>
           </div>
-          <div class="comparison-content">{{ originalContent }}</div>
+          <div class="comparison-content">{{ originalPreviewContent || '暂无内容' }}</div>
         </div>
         <div class="comparison-divider">
           <el-icon><Right /></el-icon>
         </div>
-        <div class="comparison-panel">
+        <div class="comparison-panel comparison-panel-after">
           <div class="comparison-header">
-            <span class="comparison-title">扩写后</span>
+            <div class="comparison-header-main">
+              <span class="comparison-badge comparison-badge-expand">扩写后</span>
+              <span class="comparison-title">扩展建议</span>
+            </div>
+            <span class="comparison-meta">{{ expandedPreviewContent.length }} 字</span>
           </div>
-          <div class="comparison-content">{{ expandedContent }}</div>
+          <div class="comparison-content">{{ expandedPreviewContent || '暂无内容' }}</div>
         </div>
       </div>
       <template #footer>
-        <el-button @click="cancelExpand">保留原文</el-button>
-        <el-button type="primary" @click="confirmExpand">使用扩写</el-button>
+        <div class="comparison-footer">
+          <div class="comparison-footer-tip">确认后会直接替换正文内容。</div>
+          <div class="comparison-footer-actions">
+            <el-button @click="cancelExpand" class="comparison-cancel-btn">保留原文</el-button>
+            <el-button type="primary" @click="confirmExpand" class="comparison-confirm-btn comparison-confirm-btn-expand">使用扩写</el-button>
+          </div>
+        </div>
       </template>
     </el-dialog>
 
@@ -306,37 +279,30 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { useEditor, EditorContent } from '@tiptap/vue-3'
-import StarterKit from '@tiptap/starter-kit'
-import Image from '@tiptap/extension-image'
-import Link from '@tiptap/extension-link'
-import Placeholder from '@tiptap/extension-placeholder'
-import EmojiPicker from 'emoji-picker-react'
-import { ArrowLeft, Document, Folder, Picture, Star, Promotion, Grid, MagicStick, Right } from '@element-plus/icons-vue'
+import { ArrowLeft, Document, Folder, Promotion, Grid, MagicStick, Right } from '@element-plus/icons-vue'
+import PostRichTextEditor from '@/components/post/PostRichTextEditor.vue'
 import { listSections } from '@/api/section'
 import { createPost, updatePost, listMyPosts, getPost, deletePost } from '@/api/post'
-import { uploadPostImage } from '@/api/post'
 import { polish as polishApi, expand as expandApi, getAiStatus } from '@/api/ai'
+import { TITLE_MAX_LENGTH, extractImageUrls, formatPreviewText, getMeaningfulContent, stripHtmlParagraphWrapper } from '@/utils/postContent'
 
 const router = useRouter()
 const route = useRoute()
 const formRef = ref()
+const editorRef = ref(null)
 const submitting = ref(false)
 const pageLoading = ref(false)
 const sections = ref([])
-const showEmojiPicker = ref(false)
 const showDraftList = ref(false)
 const drafts = ref([])
 const loadedDraftId = ref(route.query.draftId ? parseInt(route.query.draftId) : null)
 
 // AI 润色相关
 const aiEnabled = ref(false)
-const polishStyle = ref('standard')
 const polishing = ref(false)
-const showPolishMenu = ref(false)
 const polishedContent = ref('')
 const originalContent = ref('')
 const showPolishDialog = ref(false)
@@ -361,34 +327,14 @@ const expandStyles = [
   { value: 'professional', label: '专业延伸', desc: '从专业角度延伸解释' }
 ]
 
-/** 去除 AI 返回的 <p> 等包裹标签，避免写入编辑器后显示为标签文本 */
-function stripHtmlP(text) {
-  if (!text || typeof text !== 'string') return ''
-  let s = text.trim()
-  if (s.startsWith('<p>') && s.endsWith('</p>')) s = s.slice(3, -4).trim()
-  return s.replace(/<\/p>\s*<p>/gi, '\n').replace(/<p>/gi, '').replace(/<\/p>/gi, '').trim()
-}
+const originalPreviewContent = computed(() => formatPreviewText(originalContent.value))
+const polishedPreviewContent = computed(() => formatPreviewText(polishedContent.value))
+const expandedPreviewContent = computed(() => formatPreviewText(expandedContent.value))
 
-// Tiptap 富文本编辑器配置
-const editor = useEditor({
-  content: '',
-  extensions: [
-    StarterKit,
-    Image.configure({
-      inline: true,
-      allowBase64: true
-    }),
-    Link.configure({
-      openOnClick: false
-    }),
-    Placeholder.configure({
-      placeholder: '分享你的想法...'
-    })
-  ],
-  onUpdate: ({ editor }) => {
-    form.value.content = editor.getHTML()
-  }
-})
+function syncEditorContent(content = '') {
+  editorRef.value?.setContent(content)
+  uploadedImages.value = extractImageUrls(content)
+}
 
 const form = ref({
   sectionId: null,
@@ -407,84 +353,25 @@ const rules = {
   ],
   title: [
     { required: true, message: '请输入标题', trigger: 'blur' },
-    { min: 5, max: 255, message: '标题长度为 5-255 个字符', trigger: 'blur' }
+    { min: 5, max: TITLE_MAX_LENGTH, message: `标题长度为 5-${TITLE_MAX_LENGTH} 个字符`, trigger: 'blur' }
   ],
   content: [
-    { required: true, message: '请输入正文', trigger: 'blur' }
+    {
+      validator: (_, value, callback) => {
+        const { text, images } = getMeaningfulContent(value)
+        if (!text && images.length === 0) {
+          callback(new Error('请输入正文内容或至少插入一张图片'))
+          return
+        }
+        callback()
+      },
+      trigger: 'blur'
+    }
   ]
 }
 
-// 添加链接
-function addLink() {
-  const url = window.prompt('请输入链接地址:')
-  if (url) {
-    editor.value?.chain().focus().setLink({ href: url }).run()
-  }
-}
-
-// 添加图片
-const imageUploading = ref(false)
-
-async function addImage() {
-  if (imageUploading.value) return
-
-  const input = document.createElement('input')
-  input.type = 'file'
-  input.accept = 'image/*'
-  input.onchange = async (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      // 验证文件大小
-      if (file.size > 10 * 1024 * 1024) {
-        ElMessage.warning('图片大小不能超过10MB')
-        return
-      }
-
-      // 验证文件类型
-      if (!file.type.startsWith('image/')) {
-        ElMessage.warning('请选择图片文件')
-        return
-      }
-
-      imageUploading.value = true
-      try {
-        const res = await uploadPostImage(file)
-        const url = res.data
-        if (url) {
-          editor.value?.chain().focus().setImage({ src: url }).run()
-          // 同时将图片URL添加到 uploadedImages，确保提交时能发送到后端
-          if (!uploadedImages.value.includes(url)) {
-            uploadedImages.value.push(url)
-          }
-          ElMessage.success('图片添加成功')
-        }
-      } catch (error) {
-        console.error('Image upload error:', error)
-        ElMessage.error('图片上传失败，请稍后重试')
-      } finally {
-        imageUploading.value = false
-      }
-    }
-  }
-  input.click()
-}
-
-const selectedSectionName = computed(() => {
-  const section = sections.value.find(s => s.id === form.value.sectionId)
-  return section?.name || ''
-})
-
-function removeImage(index) {
-  uploadedImages.value.splice(index, 1)
-}
-
-function clearAllImages() {
-  uploadedImages.value = []
-}
-
-function handleEmojiSelect(emoji) {
-  form.value.content += emoji.emoji
-  showEmojiPicker.value = false
+function handleEditorImagesChange(images) {
+  uploadedImages.value = images
 }
 
 async function handlePolish(style) {
@@ -499,12 +386,11 @@ async function handlePolish(style) {
   }
 
   polishing.value = true
-  showPolishMenu.value = false
 
   try {
     const res = await polishApi({ content: form.value.content, style })
     originalContent.value = form.value.content
-    polishedContent.value = stripHtmlP(res.data) || res.data
+    polishedContent.value = stripHtmlParagraphWrapper(res.data) || res.data
     showPolishDialog.value = true
   } catch (error) {
     console.error('Polish error:', error)
@@ -516,9 +402,9 @@ async function handlePolish(style) {
 
 // 确认使用润色后的内容，同步到表单并立即写入编辑器
 function confirmPolish() {
-  const content = stripHtmlP(polishedContent.value) || polishedContent.value
+  const content = stripHtmlParagraphWrapper(polishedContent.value) || polishedContent.value
   form.value.content = content
-  editor.value?.commands.setContent(content, false)
+  editorRef.value?.setContent(content)
   showPolishDialog.value = false
   ElMessage.success('已替换为润色后的内容')
 }
@@ -540,7 +426,7 @@ async function handleExpand(style) {
   try {
     const res = await expandApi({ content: form.value.content, style })
     originalContent.value = form.value.content
-    expandedContent.value = stripHtmlP(res.data) || res.data
+    expandedContent.value = stripHtmlParagraphWrapper(res.data) || res.data
     showExpandDialog.value = true
   } catch (error) {
     console.error('Expand error:', error)
@@ -551,36 +437,15 @@ async function handleExpand(style) {
 }
 
 function confirmExpand() {
-  const content = stripHtmlP(expandedContent.value) || expandedContent.value
+  const content = stripHtmlParagraphWrapper(expandedContent.value) || expandedContent.value
   form.value.content = content
-  editor.value?.commands.setContent(content, false)
+  editorRef.value?.setContent(content)
   showExpandDialog.value = false
   ElMessage.success('已替换为扩写后的内容')
 }
 
 function cancelExpand() {
   showExpandDialog.value = false
-}
-
-async function handleUploadImage(files, callback) {
-  const urls = []
-
-  for (const file of files) {
-    try {
-      const res = await uploadPostImage(file)
-      const url = res.data
-      urls.push(url)
-      if (!uploadedImages.value.includes(url)) {
-        uploadedImages.value.push(url)
-      }
-    } catch (error) {
-      ElMessage.error('图片上传失败')
-    }
-  }
-
-  if (urls.length > 0) {
-    callback(urls)
-  }
 }
 
 function formatTime(timeStr) {
@@ -607,6 +472,7 @@ function startFresh() {
     draft: false
   }
   uploadedImages.value = []
+  syncEditorContent('')
   showDraftList.value = false
 }
 
@@ -614,15 +480,18 @@ async function loadDraft(draft) {
   try {
     const res = await getPost(draft.id)
     const post = res.data
+    const extractedImages = extractImageUrls(post.content || '')
+    const draftImages = Array.isArray(post.images) && post.images.length > 0 ? post.images : extractedImages
     loadedDraftId.value = post.id
     form.value = {
       sectionId: post.sectionId,
       title: post.title,
       content: post.content,
-      images: post.images || [],
+      images: draftImages,
       draft: true
     }
-    uploadedImages.value = post.images || []
+    uploadedImages.value = draftImages
+    syncEditorContent(post.content || '')
     showDraftList.value = false
     ElMessage.success('已加载草稿')
   } catch {
@@ -662,23 +531,7 @@ async function handleSubmit(asDraft) {
 
   try {
     form.value.draft = asDraft
-    form.value.images = uploadedImages.value
-
-    // 从 HTML 内容中提取图片 URL，作为后备
-    if (form.value.content && (!form.value.images || form.value.images.length === 0)) {
-      const imgRegex = /<img[^>]+src=["']([^"']+)["']/gi
-      const extractedImages = []
-      let match
-      while ((match = imgRegex.exec(form.value.content)) !== null && extractedImages.length < 9) {
-        const src = match[1]
-        if (src && typeof src === 'string' && src.trim() && !extractedImages.includes(src.trim())) {
-          extractedImages.push(src.trim())
-        }
-      }
-      if (extractedImages.length > 0) {
-        form.value.images = extractedImages
-      }
-    }
+    form.value.images = extractImageUrls(form.value.content)
 
     const submitData = {
       sectionId: form.value.sectionId,
@@ -709,7 +562,8 @@ async function handleSubmit(asDraft) {
 }
 
 function handleCancel() {
-  if (form.value.title || form.value.content) {
+  const { text, images } = getMeaningfulContent(form.value.content)
+  if (form.value.title || text || images.length > 0) {
     ElMessageBox.confirm('内容尚未保存，确定要返回吗？', '提示', {
       confirmButtonText: '返回',
       cancelButtonText: '继续编辑',
@@ -764,37 +618,26 @@ onMounted(async () => {
   } finally {
     pageLoading.value = false
   }
-
-  // 点击外部关闭emoji选择器
-  document.addEventListener('click', handleClickOutside)
 })
-
-onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
-})
-
-function handleClickOutside(e) {
-  if (showEmojiPicker.value && !e.target.closest('.toolbar-btn') && !e.target.closest('.emoji-picker-container')) {
-    showEmojiPicker.value = false
-  }
-}
 </script>
 
 <style scoped>
 .create-post-page {
-  max-width: 1400px;
-  margin: 0 auto;
-  padding: 24px;
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0;
   min-height: 100vh;
   background: #f5f7fa;
 }
 
 .editor-card {
+  width: 100%;
   background: #fff;
-  border-radius: 16px;
-  padding: 28px 32px;
-  border: 1px solid #e4e7ed;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  border: none;
+  border-radius: 0;
+  padding: 28px 32px 40px;
+  box-shadow: none;
 }
 
 .editor-header {
@@ -803,29 +646,37 @@ function handleClickOutside(e) {
   align-items: center;
   margin-bottom: 28px;
   padding-bottom: 20px;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid #edf1f6;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 .back-btn {
-  font-size: 20px;
-  color: #606266;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  font-size: 22px;
+  color: #64748b;
 }
 
 .back-btn:hover {
-  color: #409eff;
+  color: #2563eb;
+  background: #eff6ff;
 }
 
 .page-title {
-  font-size: 24px;
-  font-weight: 600;
-  color: #303133;
   margin: 0;
+  font-size: 26px;
+  font-weight: 800;
+  color: #1f2937;
+  letter-spacing: -0.02em;
 }
 
 .header-right {
@@ -833,34 +684,54 @@ function handleClickOutside(e) {
   align-items: center;
 }
 
-.draft-btn {
-  display: flex;
+.header-right .draft-btn {
+  display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  color: #4b5563;
+  font-weight: 600;
 }
 
 .draft-badge {
   margin-left: 4px;
 }
 
-:deep(.section-form-item) {
-  margin-bottom: 20px;
+:deep(.section-form-item),
+:deep(.title-form-item),
+:deep(.content-form-item) {
+  margin-bottom: 26px;
 }
 
-:deep(.section-form-item .el-form-item__label) {
-  font-size: 15px;
-  font-weight: 500;
-  color: #303133;
-  padding-bottom: 8px;
+:deep(.section-form-item .el-form-item__label),
+:deep(.title-form-item .el-form-item__label),
+:deep(.content-form-item .el-form-item__label) {
+  padding-bottom: 12px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1f2937;
+}
+
+:deep(.section-form-item .el-form-item__content),
+:deep(.content-form-item .el-form-item__content) {
+  width: 100%;
 }
 
 .section-select {
   width: 100%;
+  max-width: 760px;
 }
 
-.section-select :deep(.el-input__wrapper) {
-  padding: 12px 16px;
-  border-radius: 10px;
+.section-select :deep(.el-input__wrapper),
+.section-select :deep(.el-select__wrapper) {
+  min-height: 54px;
+  padding: 0 16px;
+  border-radius: 14px;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.8), 0 0 0 1px #d9e2ee inset;
+}
+
+.section-select :deep(.el-input__wrapper.is-focus),
+.section-select :deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16), 0 0 0 1px #6aa5ff inset;
 }
 
 .section-option {
@@ -871,40 +742,32 @@ function handleClickOutside(e) {
 
 .section-name {
   font-size: 14px;
-  font-weight: 500;
-  color: #303133;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .section-desc {
-  font-size: 12px;
-  color: #909399;
   margin-top: 2px;
-}
-
-:deep(.title-form-item) {
-  margin-bottom: 20px;
-}
-
-:deep(.title-form-item .el-form-item__label) {
-  font-size: 15px;
-  font-weight: 500;
-  color: #303133;
-  padding-bottom: 8px;
+  font-size: 12px;
+  color: #94a3b8;
 }
 
 .title-input-wrapper {
   position: relative;
+  width: 100%;
+  max-width: 760px;
 }
 
 .title-input {
   width: 100%;
-  padding: 16px 70px 16px 16px;
+  padding: 16px 76px 16px 18px;
   font-size: 18px;
   font-weight: 500;
+  color: #1f2937;
   border: 2px solid #dcdfe6;
-  border-radius: 10px;
+  border-radius: 12px;
   outline: none;
-  transition: all 0.3s;
+  transition: all 0.25s ease;
 }
 
 .title-input:focus {
@@ -913,279 +776,152 @@ function handleClickOutside(e) {
 }
 
 .title-input::placeholder {
-  color: #c0c4cc;
+  color: #c4ccd7;
 }
 
 .title-count {
   position: absolute;
-  right: 16px;
+  right: 18px;
   top: 50%;
   transform: translateY(-50%);
-  font-size: 13px;
-  color: #909399;
+  font-size: 14px;
+  color: #9aa4b2;
 }
 
 .title-count.near-limit {
-  color: #e6a23c;
+  color: #f59e0b;
 }
 
-:deep(.content-form-item) {
-  margin-bottom: 16px;
+.editor-wrapper {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid #d6e2f0;
+  border-radius: 22px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05), inset 0 1px 0 rgba(255, 255, 255, 0.85);
 }
 
-:deep(.content-form-item .el-form-item__label) {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 15px;
-  font-weight: 500;
-  color: #303133;
-  padding-bottom: 8px;
-}
-
-.content-label {
-  font-weight: 500;
-}
-
-/* Tiptap 编辑器样式 */
-.tiptap-editor {
-  border: 2px solid #dcdfe6;
-  border-radius: 12px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  transition: border-color 0.3s;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  max-height: 500px;
-}
-
-.tiptap-editor:focus-within {
-  border-color: #409eff;
-}
-
-.tiptap-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
-  background: #fafafa;
-  border-bottom: 1px solid #ebeef5;
-  position: relative;
-  z-index: 20;
-  overflow: visible;
-  flex-shrink: 0;
-  border-radius: 10px 10px 0 0;
-}
-
-/* el-tooltip 触发器保持行内，避免破坏工具栏 flex 布局 */
-.tiptap-toolbar :deep(.el-tooltip__trigger) {
-  display: inline-flex;
-}
-
-.tiptap-toolbar .toolbar-btn-wrapper {
-  position: relative;
-  overflow: visible;
-}
-
-.tiptap-toolbar button {
-  width: 28px;
-  height: 28px;
+.editor-wrapper :deep(.rich-editor) {
   border: none;
+  border-radius: 0;
   background: transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 13px;
-  color: #606266;
+  box-shadow: none;
 }
 
-.tiptap-toolbar button:hover {
-  background: #e8e8e8;
+.editor-wrapper :deep(.tiptap-toolbar) {
+  gap: 14px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #dbe7f4;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95) 0%, rgba(247, 251, 255, 0.98) 100%);
 }
 
-.tiptap-toolbar button.is-active {
-  background: #409eff;
-  color: #fff;
+.editor-wrapper :deep(.toolbar-group) {
+  gap: 10px;
 }
 
-.tiptap-toolbar button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.tiptap-toolbar button:disabled:hover {
-  background: transparent;
-}
-
-/* 加载动画 */
-.loading-spinner {
-  display: inline-block;
-  width: 14px;
-  height: 14px;
-  border: 2px solid #409eff;
-  border-radius: 50%;
-  border-top-color: transparent;
-  animation: spin 0.8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.toolbar-divider {
-  color: #dcdfe6;
-  margin: 0 4px;
-}
-
-.tiptap-content {
-  flex: 1;
-  min-height: 280px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  border-radius: 0 0 10px 10px;
-}
-
-.tiptap-content :deep(.ProseMirror) {
-  padding: 16px;
-  min-height: 280px;
-  outline: none;
-  font-size: 15px;
-  line-height: 1.7;
-}
-
-.tiptap-content :deep(.ProseMirror p.is-editor-empty:first-child::before) {
-  content: attr(data-placeholder);
-  float: left;
-  color: #adb5bd;
-  pointer-events: none;
-  height: 0;
-}
-
-/* Tiptap 编辑器内图片样式 - 限制默认显示尺寸，不占满整屏 */
-.tiptap-content :deep(.ProseMirror img) {
-  max-width: min(100%, 360px);
-  max-height: 280px;
-  width: auto;
-  height: auto;
-  object-fit: contain;
-  border-radius: 8px;
-  margin: 12px 0;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  display: block;
-  cursor: pointer;
-}
-
-.tiptap-content :deep(.ProseMirror img.ProseMirror-selectednode) {
-  outline: 3px solid #409eff;
-  outline-offset: 2px;
-}
-
-/* Tiptap 编辑器内链接样式 */
-.tiptap-content :deep(.ProseMirror a) {
-  color: #409eff;
-  text-decoration: none;
-}
-
-.tiptap-content :deep(.ProseMirror a:hover) {
-  text-decoration: underline;
-}
-
-/* Tiptap 编辑器内代码样式 */
-.tiptap-content :deep(.ProseMirror code) {
-  background: #f0f0f0;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'SFMono-Regular', Consolas, monospace;
-  font-size: 0.9em;
-}
-
-.tiptap-content :deep(.ProseMirror pre) {
-  background: #282c34;
-  color: #abb2bf;
-  padding: 16px;
-  border-radius: 8px;
-  overflow-x: auto;
-  margin: 12px 0;
-}
-
-.tiptap-content :deep(.ProseMirror pre code) {
-  background: transparent;
-  padding: 0;
-  color: inherit;
-}
-
-/* Tiptap 编辑器内引用样式 */
-.tiptap-content :deep(.ProseMirror blockquote) {
-  border-left: 4px solid #409eff;
-  background: #f5f7fa;
-  padding: 12px 16px;
-  margin: 12px 0;
-  color: #606266;
-}
-
-/* 自定义滚动条样式 */
-.tiptap-editor::-webkit-scrollbar {
-  width: 8px;
-}
-
-.tiptap-editor::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-.tiptap-editor::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
-}
-
-.tiptap-editor::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
-}
-
-.toolbar-group button:hover {
-  background: #e8e8e8;
-  color: #303133;
-}
-
-.toolbar-group button.is-active {
-  background: #409eff;
-  color: #fff;
-}
-
-.toolbar-divider {
+.editor-wrapper :deep(.toolbar-divider) {
   width: 1px;
   height: 24px;
-  background: #dcdfe6;
-  margin: 0 8px;
+  margin: 0 2px;
+  background: #d9e3f0;
 }
 
-/* AI 润色工具栏 */
+.editor-wrapper :deep(.toolbar-group button) {
+  min-width: 46px;
+  height: 46px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid #d5e0ee;
+  background: #fff;
+  color: #334155;
+  font-size: 15px;
+  font-weight: 700;
+  transition: all 0.22s ease;
+}
+
+.editor-wrapper :deep(.toolbar-group button:hover:not(:disabled)) {
+  border-color: #7ea7ff;
+  color: #2563eb;
+  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.14);
+  transform: translateY(-1px);
+}
+
+.editor-wrapper :deep(.toolbar-group button.is-active) {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(180deg, #5aa7ff 0%, #2f7df6 100%);
+  box-shadow: 0 10px 18px rgba(47, 125, 246, 0.22);
+}
+
+.editor-wrapper :deep(.tiptap-content .ProseMirror) {
+  min-height: 340px;
+  padding: 26px 28px 34px;
+  background: rgba(255, 255, 255, 0.96);
+  font-size: 17px;
+  line-height: 1.92;
+  color: #1e293b;
+}
+
+.editor-wrapper :deep(.tiptap-content .ProseMirror p.is-editor-empty:first-child::before) {
+  color: #a6b0bf;
+}
+
+.editor-wrapper :deep(.tiptap-content .ProseMirror img) {
+  max-width: min(100%, 440px);
+  max-height: 320px;
+  margin: 16px 0;
+  border-radius: 14px;
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.11);
+}
+
 .ai-toolbar {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: #fafafa;
-  border-bottom: 1px solid #ebeef5;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #dde7f2;
+  background: linear-gradient(180deg, rgba(249, 252, 255, 0.96) 0%, rgba(243, 248, 255, 0.98) 100%);
+}
+
+.ai-toolbar-copy {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.ai-toolbar-title {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+.ai-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .ai-polish-btn,
 .ai-expand-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 500;
+  min-width: 112px;
+  height: 40px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.ai-polish-btn {
+  box-shadow: 0 10px 20px rgba(59, 130, 246, 0.18);
 }
 
 .ai-expand-btn {
-  margin-left: 4px;
-}
-
-.ai-hint {
-  font-size: 12px;
-  color: #909399;
+  box-shadow: 0 10px 20px rgba(101, 163, 13, 0.18);
 }
 
 .style-option {
@@ -1196,204 +932,24 @@ function handleClickOutside(e) {
 
 .style-label {
   font-size: 14px;
-  font-weight: 500;
-  color: #303133;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .style-desc {
-  font-size: 12px;
-  color: #909399;
   margin-top: 2px;
-}
-
-/* 润色对比弹窗 */
-.polish-comparison {
-  display: flex;
-  gap: 16px;
-  height: 400px;
-}
-
-.comparison-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid #e4e7ed;
-  border-radius: 8px;
-  overflow: hidden;
-}
-
-.comparison-header {
-  padding: 12px 16px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-.comparison-title {
-  font-weight: 500;
-  color: #303133;
-}
-
-.comparison-content {
-  flex: 1;
-  padding: 16px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 14px;
-  line-height: 1.8;
-  color: #606266;
-}
-
-.comparison-divider {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #909399;
-  font-size: 20px;
-}
-
-.editor-toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 12px 0;
-  margin-bottom: 16px;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.toolbar-left {
-  display: flex;
-  gap: 8px;
-}
-
-.toolbar-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border-radius: 8px;
-  cursor: pointer;
-  color: #606266;
-  font-size: 14px;
-  transition: all 0.2s;
-}
-
-.toolbar-btn:hover {
-  background: #ecf5ff;
-  color: #409eff;
-}
-
-.toolbar-right {
-  display: flex;
-  align-items: center;
-}
-
-.emoji-picker-container {
-  position: absolute;
-  z-index: 100;
-  margin-top: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-  border-radius: 12px;
-  overflow: hidden;
-}
-
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.2s;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
-:deep(.images-form-item) {
-  margin-bottom: 20px;
-}
-
-:deep(.images-form-item .el-form-item__label) {
-  font-size: 15px;
-  font-weight: 500;
-  color: #303133;
-  padding-bottom: 8px;
-}
-
-.uploaded-images {
-  padding: 16px;
-  background: #fafafa;
-  border-radius: 10px;
-  border: 1px dashed #dcdfe6;
-}
-
-.image-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.image-item {
-  position: relative;
-  width: 100px;
-  height: 100px;
-  border-radius: 10px;
-  overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.image-item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.image-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.image-item:hover .image-overlay {
-  opacity: 1;
-}
-
-.add-more {
-  width: 100px;
-  height: 100px;
-  border: 2px dashed #c0c4cc;
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  color: #909399;
   font-size: 12px;
-  transition: all 0.2s;
-}
-
-.add-more:hover {
-  border-color: #409eff;
-  color: #409eff;
-  background: #f5f7fa;
-}
-
-.images-actions {
-  margin-top: 12px;
-  text-align: right;
+  color: #94a3b8;
 }
 
 .form-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 24px;
-  padding-top: 20px;
-  border-top: 1px solid #f0f0f0;
+  gap: 16px;
+  margin-top: 28px;
+  padding-top: 22px;
+  border-top: 1px solid #edf1f6;
 }
 
 .actions-left {
@@ -1402,25 +958,24 @@ function handleClickOutside(e) {
 }
 
 .action-hint {
-  font-size: 13px;
-  color: #909399;
+  font-size: 14px;
+  color: #94a3b8;
 }
 
 .action-hint kbd {
-  display: inline-block;
-  padding: 2px 6px;
-  font-size: 12px;
-  font-family: inherit;
-  background: #f5f7fa;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-}
-
-.actions-left .el-checkbox {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  margin: 0 2px;
+  font-size: 13px;
+  font-family: inherit;
+  background: #f8fafc;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(148, 163, 184, 0.12);
 }
 
 .actions-right {
@@ -1428,19 +983,21 @@ function handleClickOutside(e) {
   gap: 12px;
 }
 
-.cancel-btn {
-  min-width: 80px;
-}
-
-.draft-btn {
+.actions-right .cancel-btn,
+.actions-right .draft-btn,
+.actions-right .publish-btn {
   min-width: 110px;
-}
-
-.publish-btn {
-  min-width: 90px;
+  height: 44px;
+  border-radius: 14px;
+  font-weight: 700;
 }
 
 /* 草稿箱样式 */
+.draft-dialog :deep(.el-dialog) {
+  border-radius: 24px;
+  overflow: hidden;
+}
+
 .draft-dialog :deep(.el-dialog__body) {
   padding: 0;
 }
@@ -1458,14 +1015,14 @@ function handleClickOutside(e) {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid #f0f0f0;
+  padding: 18px 22px;
+  border-bottom: 1px solid #f1f5f9;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s ease;
 }
 
 .draft-item:hover {
-  background: #f5f7fa;
+  background: #f8fbff;
 }
 
 .draft-item:last-child {
@@ -1478,22 +1035,22 @@ function handleClickOutside(e) {
 }
 
 .draft-title {
-  font-size: 15px;
-  font-weight: 500;
-  color: #303133;
   margin-bottom: 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+  color: #1f2937;
 }
 
 .draft-summary {
-  font-size: 13px;
-  color: #909399;
   margin-bottom: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
+  color: #94a3b8;
 }
 
 .draft-meta {
@@ -1504,7 +1061,7 @@ function handleClickOutside(e) {
 
 .draft-time {
   font-size: 12px;
-  color: #c0c4cc;
+  color: #c0cad7;
 }
 
 .draft-actions {
@@ -1512,39 +1069,339 @@ function handleClickOutside(e) {
   margin-left: 12px;
 }
 
-/* 响应式 */
-@media (max-width: 768px) {
+/* 润色/扩写对比弹窗 */
+:deep(.polish-dialog .el-dialog) {
+  border: 1px solid #dfe8f3;
+  border-radius: 28px;
+  overflow: hidden;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.22);
+}
+
+:deep(.polish-dialog .el-dialog__header) {
+  margin: 0;
+  padding: 24px 28px 18px;
+  border-bottom: 1px solid #e4edf7;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+}
+
+:deep(.polish-dialog .el-dialog__title) {
+  font-size: 28px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+}
+
+:deep(.polish-dialog .el-dialog__headerbtn) {
+  top: 24px;
+  right: 24px;
+}
+
+:deep(.polish-dialog .el-dialog__body) {
+  padding: 24px 28px 20px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f4f8fc 100%);
+}
+
+:deep(.polish-dialog .el-dialog__footer) {
+  padding: 0 28px 24px;
+  background: linear-gradient(180deg, #f4f8fc 0%, #f8fbff 100%);
+}
+
+.polish-comparison {
+  display: flex;
+  align-items: stretch;
+  gap: 18px;
+  min-height: 480px;
+}
+
+.comparison-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border: 1px solid #dbe4ef;
+  border-radius: 22px;
+  overflow: hidden;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+}
+
+.comparison-panel-before {
+  background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+}
+
+.comparison-panel-after {
+  background: linear-gradient(180deg, #ffffff 0%, #f5fbff 100%);
+}
+
+.comparison-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid #dde6f1;
+  background: linear-gradient(180deg, #fcfeff 0%, #f4f8fd 100%);
+}
+
+.comparison-header-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.comparison-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: #eff4fb;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.comparison-badge-polish {
+  background: rgba(59, 130, 246, 0.14);
+  color: #1d4ed8;
+}
+
+.comparison-badge-expand {
+  background: rgba(101, 163, 13, 0.16);
+  color: #3f6212;
+}
+
+.comparison-title {
+  font-size: 17px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.comparison-meta {
+  font-size: 13px;
+  font-weight: 600;
+  color: #94a3b8;
+}
+
+.comparison-content {
+  flex: 1;
+  min-height: 0;
+  padding: 24px 22px 26px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 16px;
+  line-height: 1.95;
+  color: #334155;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(249, 252, 255, 0.98) 100%);
+}
+
+.comparison-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  flex-shrink: 0;
+  color: #5b7ab3;
+}
+
+.comparison-divider :deep(.el-icon) {
+  width: 56px;
+  height: 56px;
+  border: 1px solid #d6e4f6;
+  border-radius: 50%;
+  background: #f3f8ff;
+  box-shadow: 0 12px 24px rgba(59, 130, 246, 0.12);
+  font-size: 20px;
+}
+
+.comparison-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+}
+
+.comparison-footer-tip {
+  font-size: 14px;
+  color: #64748b;
+}
+
+.comparison-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.comparison-cancel-btn,
+.comparison-confirm-btn {
+  min-width: 124px;
+  height: 46px;
+  border-radius: 14px;
+  font-weight: 700;
+}
+
+.comparison-confirm-btn {
+  box-shadow: 0 14px 26px rgba(59, 130, 246, 0.18);
+}
+
+.comparison-confirm-btn-expand {
+  --el-button-bg-color: #67c23a;
+  --el-button-border-color: #67c23a;
+  --el-button-hover-bg-color: #7bce52;
+  --el-button-hover-border-color: #7bce52;
+  --el-button-active-bg-color: #59b12f;
+  --el-button-active-border-color: #59b12f;
+  box-shadow: 0 14px 26px rgba(101, 163, 13, 0.18);
+}
+
+@media (max-width: 1200px) {
   .create-post-page {
-    padding: 12px;
+    padding: 24px;
   }
 
   .editor-card {
+    padding: 30px 28px;
+  }
+
+  .polish-comparison {
+    flex-direction: column;
+    min-height: auto;
+  }
+
+  .comparison-divider {
+    width: 100%;
+    height: 52px;
+  }
+
+  .comparison-divider :deep(.el-icon) {
+    transform: rotate(90deg);
+  }
+
+  .comparison-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .comparison-footer-actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 960px) {
+  .ai-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .ai-toolbar-actions {
+    width: 100%;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 768px) {
+  .create-post-page {
     padding: 16px;
+  }
+
+  .editor-card {
+    padding: 20px;
+    border-radius: 20px;
   }
 
   .editor-header {
     flex-direction: column;
-    gap: 12px;
     align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 24px;
   }
 
   .page-title {
-    font-size: 20px;
+    font-size: 24px;
+  }
+
+  .section-select,
+  .title-input-wrapper {
+    max-width: none;
   }
 
   .title-input {
+    min-height: 88px;
+    padding: 0 96px 0 22px;
+    font-size: 17px;
+    border-radius: 18px;
+  }
+
+  .title-count {
+    right: 20px;
     font-size: 16px;
-    padding: 14px 60px 14px 14px;
+  }
+
+  .ai-toolbar {
+    padding: 18px 18px 16px;
+  }
+
+  .ai-toolbar-title {
+    font-size: 18px;
+  }
+
+  .ai-polish-btn,
+  .ai-expand-btn {
+    min-width: 122px;
+    height: 44px;
+    font-size: 16px;
+  }
+
+  .editor-wrapper :deep(.tiptap-toolbar) {
+    padding: 16px 18px;
+  }
+
+  .editor-wrapper :deep(.toolbar-group button) {
+    min-width: 50px;
+    height: 50px;
+    border-radius: 16px;
+  }
+
+  .editor-wrapper :deep(.tiptap-content .ProseMirror) {
+    min-height: 300px;
+    padding: 24px 22px 30px;
+    font-size: 17px;
+    line-height: 1.9;
   }
 
   .form-actions {
     flex-direction: column;
-    gap: 12px;
+    align-items: stretch;
   }
 
   .actions-right {
     width: 100%;
     justify-content: flex-end;
+    flex-wrap: wrap;
+  }
+
+  :deep(.polish-dialog .el-dialog) {
+    width: calc(100vw - 24px) !important;
+  }
+
+  :deep(.polish-dialog .el-dialog__header) {
+    padding: 20px 20px 16px;
+  }
+
+  :deep(.polish-dialog .el-dialog__title) {
+    font-size: 22px;
+  }
+
+  :deep(.polish-dialog .el-dialog__body) {
+    padding: 18px 20px 16px;
+  }
+
+  :deep(.polish-dialog .el-dialog__footer) {
+    padding: 0 20px 20px;
   }
 }
 </style>

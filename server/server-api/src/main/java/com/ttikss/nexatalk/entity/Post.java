@@ -43,7 +43,7 @@ public class Post {
     /** 帖子标题 */
     private String title;
 
-    /** 帖子正文（支持 Markdown） */
+    /** 帖子正文（优先存储富文本 HTML，兼容旧 Markdown） */
     private String content;
 
     /** 封面图 URL */

@@ -51,8 +51,8 @@
       </router-link>
       
       <div v-if="!userStore.isLoggedIn" class="auth-buttons">
-         <el-button type="primary" round class="w-full mb-2" @click="$router.push('/login')">登录</el-button>
-         <el-button round class="w-full" @click="$router.push('/register')">注册</el-button>
+         <el-button type="primary" round class="auth-btn auth-btn-primary" @click="$router.push('/login')">登录</el-button>
+         <el-button round class="auth-btn auth-btn-secondary" @click="$router.push('/register')">注册</el-button>
       </div>
     </nav>
 
@@ -85,6 +85,7 @@
 </template>
 
 <script setup>
+import { onMounted, watch } from 'vue'
 import { useUserStore } from '@/stores/user'
 import { useNotificationStore } from '@/stores/notification'
 import { useRouter } from 'vue-router'
@@ -101,6 +102,21 @@ const handleCommand = async (cmd) => {
     router.push('/login')
   }
 }
+
+onMounted(() => {
+  if (userStore.isLoggedIn) {
+    notifStore.refresh()
+  }
+})
+
+watch(
+  () => userStore.isLoggedIn,
+  (loggedIn) => {
+    if (loggedIn) {
+      notifStore.refresh()
+    }
+  }
+)
 </script>
 
 <style scoped>
@@ -224,9 +240,38 @@ const handleCommand = async (cmd) => {
 .auth-buttons {
   margin-top: 20px;
   padding: 0 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
-.w-full { width: 100%; }
-.mb-2 { margin-bottom: 8px; }
+
+.auth-buttons :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.auth-btn {
+  width: 100%;
+  height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.auth-btn-secondary {
+  background: #fff;
+  color: var(--text-main);
+  border-color: var(--border-color);
+}
+
+.auth-btn-secondary:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  background: #fff;
+}
+
 .mr-1 { margin-right: 4px; }
 .text-danger { color: #f56c6c; }
 </style>

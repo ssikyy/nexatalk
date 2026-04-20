@@ -1,6 +1,7 @@
 package com.ttikss.nexatalk.vo;
 
 import com.ttikss.nexatalk.entity.Post;
+import com.ttikss.nexatalk.util.PostContentUtils;
 
 import java.time.LocalDateTime;
 import java.util.Collections;
@@ -44,15 +45,13 @@ public class PostVO {
         vo.setUserId(post.getUserId());
         vo.setSectionId(post.getSectionId());
         vo.setTitle(post.getTitle());
-        vo.setContent(post.getContent());
-        // 生成摘要：从正文中截取前100个字符
-        vo.setSummary(generateSummary(post.getContent(), 100));
-        vo.setCoverUrl(post.getCoverUrl());
-        // 优先使用 images 字段解析图片列表，如果没有则从正文解析 Markdown 图片
-        List<String> images = parseImages(post.getImages());
-        if (images == null || images.isEmpty()) {
-            images = extractMarkdownImages(post.getContent());
-        }
+        String normalizedContent = PostContentUtils.normalizeContent(post.getContent());
+        vo.setContent(normalizedContent);
+        // 生成摘要：兼容富文本 HTML 和旧 Markdown
+        vo.setSummary(PostContentUtils.generateSummary(normalizedContent, 100));
+        vo.setCoverUrl(PostContentUtils.normalizeMediaUrl(post.getCoverUrl()));
+        // 优先以正文中的真实图片为准，兼容旧数据中仅存 images JSON 的情况
+        List<String> images = PostContentUtils.resolveImages(normalizedContent, parseImages(post.getImages()));
         vo.setImages(images);
         vo.setStatus(post.getStatus());
         vo.setViewCount(post.getViewCount());
@@ -78,51 +77,6 @@ public class PostVO {
         } catch (Exception e) {
             return Collections.emptyList();
         }
-    }
-
-    /** 从正文中提取 Markdown 图片 */
-    private static List<String> extractMarkdownImages(String content) {
-        if (content == null || content.isEmpty()) {
-            return Collections.emptyList();
-        }
-        // 匹配 Markdown 图片语法：![alt](url)
-        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("!\\[.*?\\]\\((.*?)\\)");
-        java.util.regex.Matcher matcher = pattern.matcher(content);
-        java.util.List<String> images = new java.util.ArrayList<>();
-        while (matcher.find()) {
-            String url = matcher.group(1);
-            if (url != null && !url.isEmpty()) {
-                images.add(url);
-            }
-        }
-        return images;
-    }
-
-    /** 生成内容摘要 */
-    private static String generateSummary(String content, int maxLength) {
-        if (content == null || content.isEmpty()) {
-            return "";
-        }
-        // 先处理图片和链接，避免在摘要中出现 URL
-        String plainText = content;
-        // 移除 Markdown 图片：![alt](url)
-        plainText = plainText.replaceAll("!\\[[^\\]]*]\\([^)]*\\)", " ");
-        // 将 Markdown 链接 [text](url) 转为纯文本 text
-        plainText = plainText.replaceAll("\\[([^\\]]*)]\\([^)]*\\)", "$1");
-
-        // 再移除其它 Markdown 语法符号
-        plainText = plainText
-                .replaceAll("#+ ", "")
-                .replaceAll("\\*\\*(.+?)\\*\\*", "$1")
-                .replaceAll("\\*(.+?)\\*", "$1")
-                .replaceAll("~~(.+?)~~", "$1")
-                .replaceAll("`(.+?)`", "$1")
-                .replaceAll("\\n+", " ")
-                .trim();
-        if (plainText.length() <= maxLength) {
-            return plainText;
-        }
-        return plainText.substring(0, maxLength) + "...";
     }
 
     /** 解析 images JSON 字符串为 List */

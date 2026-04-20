@@ -24,21 +24,29 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+import java.util.Objects;
 
 /**
  * 私信模块业务实现
  *
- * 关键设计：会话 ID 由 min(senderId, receiverId) / max(senderId, receiverId) 确定，
- * 保证每对用户只有唯一一条会话记录，避免重复创建。
+ * 关键设计：
+ * 1. 会话 ID 由 min(senderId, receiverId) / max(senderId, receiverId) 唯一确定；
+ * 2. 会话删除/清空、消息删除均为“仅当前用户可见”的本地行为；
+ * 3. 第 1 页消息永远返回最新一页，适合聊天窗口直接打开。
  */
 @Service
 public class MessageServiceImpl implements MessageService {
 
     private static final Logger log = LoggerFactory.getLogger(MessageServiceImpl.class);
+    private static final int MAX_PAGE_SIZE = 50;
+    private static final int MAX_PREVIEW_LENGTH = 50;
+    private static final String RECALLED_PLACEHOLDER = "【此消息已被撤回】";
 
     private final ConversationMapper conversationMapper;
     private final MessageMapper messageMapper;
@@ -48,11 +56,11 @@ public class MessageServiceImpl implements MessageService {
     private final AiService aiService;
 
     public MessageServiceImpl(ConversationMapper conversationMapper,
-                             MessageMapper messageMapper,
-                             UserMapper userMapper,
-                             BlacklistMapper blacklistMapper,
-                             SimpMessagingTemplate messagingTemplate,
-                             AiService aiService) {
+                              MessageMapper messageMapper,
+                              UserMapper userMapper,
+                              BlacklistMapper blacklistMapper,
+                              SimpMessagingTemplate messagingTemplate,
+                              AiService aiService) {
         this.conversationMapper = conversationMapper;
         this.messageMapper = messageMapper;
         this.userMapper = userMapper;
@@ -69,7 +77,6 @@ public class MessageServiceImpl implements MessageService {
             throw new BusinessException(ErrorCode.BAD_REQUEST.code(), "不能给自己发消息");
         }
 
-        // 检查发送方（当前用户）是否被禁言/封号
         User sender = userMapper.selectById(senderId);
         if (sender == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND.code(), "用户不存在");
@@ -83,27 +90,20 @@ public class MessageServiceImpl implements MessageService {
             }
         }
 
-        // 检查接收方用户是否存在
         User receiver = userMapper.selectById(receiverId);
         if (receiver == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND.code(), "用户不存在");
         }
-
-        // 检查接收方用户是否被封号
         if (receiver.getStatus() != null && receiver.getStatus() == User.STATUS_BANNED) {
             throw new BusinessException(ErrorCode.BAD_REQUEST.code(), "该用户已被封号");
         }
-
-        // 【重要】检查当前用户是否在接收方的黑名单中
         if (blacklistMapper.isBlocked(receiverId, senderId) > 0) {
             throw new BusinessException(ErrorCode.BAD_REQUEST.code(), "您已被对方拉黑，无法发送消息");
         }
 
-        // 保证 user1_id < user2_id
         Long user1Id = Math.min(senderId, receiverId);
         Long user2Id = Math.max(senderId, receiverId);
 
-        // 查找或创建会话
         Conversation conversation = conversationMapper.selectOne(
                 new LambdaQueryWrapper<Conversation>()
                         .eq(Conversation::getUser1Id, user1Id)
@@ -118,47 +118,33 @@ public class MessageServiceImpl implements MessageService {
             conversationMapper.insert(conversation);
         }
 
-        // 写入消息
         Message message = new Message();
         message.setConversationId(conversation.getId());
         message.setSenderId(senderId);
         message.setReceiverId(receiverId);
         message.setContent(request.getContent());
         message.setIsRead(0);
-        // 支持消息类型扩展（文本=0，图片=1，语音=2）
-        message.setType(request.getType() != null ? request.getType() : 0);
+        message.setType(request.getType() != null ? request.getType() : Message.TYPE_TEXT);
         messageMapper.insert(message);
 
-        // 更新会话：last_message + 接收方未读数 +1
-        String preview = request.getContent() != null && request.getContent().length() > 50
-                ? request.getContent().substring(0, 50) + "..."
-                : request.getContent();
-        conversation.setLastMessage(preview);
-        conversation.setLastMessageAt(LocalDateTime.now());
-        if (receiverId.equals(user1Id)) {
-            // 接收方是 user1
-            conversation.setUser1Unread(conversation.getUser1Unread() + 1);
-        } else {
-            // 接收方是 user2
-            conversation.setUser2Unread(conversation.getUser2Unread() + 1);
-        }
+        LocalDateTime sentAt = message.getCreatedAt() != null ? message.getCreatedAt() : LocalDateTime.now();
+        touchConversationOnNewMessage(conversation, receiverId, buildPreview(request.getContent()), sentAt);
         conversationMapper.updateById(conversation);
 
-        // 通过 WebSocket 推送实时消息给接收方
         try {
             Map<String, Object> notification = new HashMap<>();
             notification.put("type", "new_message");
             notification.put("messageId", message.getId());
             notification.put("conversationId", conversation.getId());
             notification.put("senderId", senderId);
-            notification.put("senderNickname", sender != null ? sender.getNickname() : "未知用户");
-            notification.put("senderAvatar", sender != null ? sender.getAvatarUrl() : "");
+            notification.put("senderNickname", sender.getNickname());
+            notification.put("senderUsername", sender.getUsername());
+            notification.put("senderAvatar", sender.getAvatarUrl());
             notification.put("receiverId", receiverId);
             notification.put("content", request.getContent());
             notification.put("messageType", message.getType());
-            notification.put("createdAt", LocalDateTime.now().toString());
-            
-            log.info("【WebSocket推送】准备发送给 receiverId={}, conversationId={}", receiverId, conversation.getId());
+            notification.put("createdAt", sentAt.toString());
+
             messagingTemplate.convertAndSendToUser(
                     receiverId.toString(),
                     "/queue/messages",
@@ -169,16 +155,15 @@ public class MessageServiceImpl implements MessageService {
             log.warn("WebSocket push failed for user {}: {}", receiverId, e.getMessage(), e);
         }
 
-        // 如果是发送给 AI 的消息，触发 AI 自动回复
         Long aiUserId = getAiUserId();
         if (aiUserId != null && receiverId.equals(aiUserId)) {
-            // 通知用户 AI 正在输入
             try {
                 Map<String, Object> typingNotification = new HashMap<>();
                 typingNotification.put("type", "typing");
                 typingNotification.put("conversationId", conversation.getId());
                 typingNotification.put("senderId", aiUserId);
                 typingNotification.put("senderNickname", "Talk");
+                typingNotification.put("senderUsername", "talk");
                 typingNotification.put("isTyping", true);
                 messagingTemplate.convertAndSendToUser(
                         senderId.toString(),
@@ -189,13 +174,11 @@ public class MessageServiceImpl implements MessageService {
                 log.warn("Typing notification failed: {}", e.getMessage());
             }
 
-            // 异步调用 AI 回复（不阻塞主线程）
-            // 注意：conversation 必须是 effectively final
             final Conversation aiConversation = conversation;
             final Long senderIdFinal = senderId;
             new Thread(() -> {
                 try {
-                    Thread.sleep(1500); // 延迟回复，模拟人工思考
+                    Thread.sleep(1500);
                     handleAiReply(senderIdFinal, aiConversation, request.getContent());
                 } catch (Exception e) {
                     log.error("AI reply failed: {}", e.getMessage());
@@ -206,20 +189,17 @@ public class MessageServiceImpl implements MessageService {
         return message;
     }
 
-    /**
-     * 处理 AI 自动回复
-     */
     private void handleAiReply(Long userId, Conversation conversation, String userMessage) {
         try {
-            // 调用 AI 服务获取回复
             String aiReply = aiService.chat(userMessage);
             if (aiReply == null || aiReply.isEmpty()) {
                 aiReply = "抱歉，我暂时无法回答这个问题。";
             }
 
-            // 保存 AI 回复消息
             Long aiUserId = getAiUserId();
-            if (aiUserId == null) return;
+            if (aiUserId == null) {
+                return;
+            }
 
             Message aiMessage = new Message();
             aiMessage.setConversationId(conversation.getId());
@@ -230,19 +210,10 @@ public class MessageServiceImpl implements MessageService {
             aiMessage.setType(Message.TYPE_TEXT);
             messageMapper.insert(aiMessage);
 
-            // 更新会话
-            String preview = aiReply.length() > 50 ? aiReply.substring(0, 50) + "..." : aiReply;
-            conversation.setLastMessage(preview);
-            conversation.setLastMessageAt(LocalDateTime.now());
-            // 用户的未读数 +1
-            if (userId.equals(conversation.getUser1Id())) {
-                conversation.setUser1Unread(conversation.getUser1Unread() + 1);
-            } else {
-                conversation.setUser2Unread(conversation.getUser2Unread() + 1);
-            }
+            LocalDateTime sentAt = aiMessage.getCreatedAt() != null ? aiMessage.getCreatedAt() : LocalDateTime.now();
+            touchConversationOnNewMessage(conversation, userId, buildPreview(aiReply), sentAt);
             conversationMapper.updateById(conversation);
 
-            // 通过 WebSocket 推送 AI 回复给用户
             User aiUser = userMapper.selectById(aiUserId);
             Map<String, Object> notification = new HashMap<>();
             notification.put("type", "new_message");
@@ -250,11 +221,12 @@ public class MessageServiceImpl implements MessageService {
             notification.put("conversationId", conversation.getId());
             notification.put("senderId", aiUserId);
             notification.put("senderNickname", aiUser != null ? aiUser.getNickname() : "Talk");
+            notification.put("senderUsername", aiUser != null ? aiUser.getUsername() : "talk");
             notification.put("senderAvatar", aiUser != null ? aiUser.getAvatarUrl() : "");
             notification.put("receiverId", userId);
             notification.put("content", aiReply);
             notification.put("messageType", aiMessage.getType());
-            notification.put("createdAt", LocalDateTime.now().toString());
+            notification.put("createdAt", sentAt.toString());
             messagingTemplate.convertAndSendToUser(
                     userId.toString(),
                     "/queue/messages",
@@ -268,181 +240,105 @@ public class MessageServiceImpl implements MessageService {
 
     @Override
     public PageVO<ConversationVO> listMyConversations(Long userId, int page, int pageSize) {
-        pageSize = Math.min(pageSize, 50);
+        page = Math.max(page, 1);
+        pageSize = normalizePageSize(pageSize);
 
-        // 查询 AI 用户的 ID（用于查找或创建 AI 会话）
         Long aiUserId = getAiUserId();
+        Conversation aiConversation = ensureAiConversation(userId, aiUserId);
 
-        // 查找或懒创建 AI 会话，保证「AI好友Talk」始终出现在会话列表中
-        Conversation aiConversation = null;
-        if (aiUserId != null) {
-            Long user1Id = Math.min(userId, aiUserId);
-            Long user2Id = Math.max(userId, aiUserId);
-            aiConversation = conversationMapper.selectOne(
-                    new LambdaQueryWrapper<Conversation>()
-                            .eq(Conversation::getUser1Id, user1Id)
-                            .eq(Conversation::getUser2Id, user2Id)
-            );
-            // 若用户从未与 AI 聊过，则没有会话记录，此处懒创建一条空会话以便列表展示入口
-            if (aiConversation == null) {
-                Conversation newConv = new Conversation();
-                newConv.setUser1Id(user1Id);
-                newConv.setUser2Id(user2Id);
-                newConv.setUser1Unread(0);
-                newConv.setUser2Unread(0);
-                try {
-                    conversationMapper.insert(newConv);
-                    aiConversation = newConv;
-                } catch (Exception e) {
-                    // 并发下可能已存在，重新查询
-                    aiConversation = conversationMapper.selectOne(
-                            new LambdaQueryWrapper<Conversation>()
-                                    .eq(Conversation::getUser1Id, user1Id)
-                                    .eq(Conversation::getUser2Id, user2Id)
-                    );
-                }
-            }
-        }
-
-        // 查询普通会话（按最后消息时间倒序；仅包含有消息的会话，避免空会话占满列表）
-        Page<Conversation> result = conversationMapper.selectPage(
-                new Page<>(page, pageSize),
+        List<Conversation> allConversations = conversationMapper.selectList(
                 new LambdaQueryWrapper<Conversation>()
-                        .and(w -> w.eq(Conversation::getUser1Id, userId)
-                                .or().eq(Conversation::getUser2Id, userId))
-                        .isNotNull(Conversation::getLastMessageAt)
-                        .orderByDesc(Conversation::getLastMessageAt)
+                        .and(wrapper -> wrapper
+                                .nested(inner -> inner
+                                        .eq(Conversation::getUser1Id, userId)
+                                        .isNull(Conversation::getUser1DeletedAt))
+                                .or(inner -> inner
+                                        .eq(Conversation::getUser2Id, userId)
+                                        .isNull(Conversation::getUser2DeletedAt)))
         );
 
-        // 转换为 VO 并填充对方用户信息；排除与 AI 的会话，由下面统一置顶展示避免重复
-        List<ConversationVO> voList = result.getRecords().stream()
-                .filter(conv -> {
-                    Long oppId = userId.equals(conv.getUser1Id()) ? conv.getUser2Id() : conv.getUser1Id();
-                    return !Long.valueOf(oppId).equals(aiUserId);
-                })
-                .map(conv -> {
-                    Long opponentId = userId.equals(conv.getUser1Id()) ? conv.getUser2Id() : conv.getUser1Id();
-                    User opponent = userMapper.selectById(opponentId);
-                    return ConversationVO.from(conv, userId, UserVO.from(opponent));
-                })
-                .collect(Collectors.toList());
-
-        // 始终将 AI 会话置顶展示（无论是否有消息），便于用户找到「AI好友Talk」
-        if (aiConversation != null && aiUserId != null) {
-            User aiUser = userMapper.selectById(aiUserId);
-            ConversationVO aiVO = ConversationVO.from(aiConversation, userId, UserVO.from(aiUser));
-            if (aiVO != null) {
-                aiVO.setIsPinned(true);
-                aiVO.setIsAiConversation(true);
-                aiVO.setOpponentNickname("AI好友Talk"); // 统一展示名称
-                voList.add(0, aiVO);
+        List<ConversationVO> items = new ArrayList<>();
+        for (Conversation conversation : allConversations) {
+            if (aiConversation != null && Objects.equals(conversation.getId(), aiConversation.getId())) {
+                continue;
             }
+            items.add(buildConversationVO(conversation, userId));
         }
 
-        return PageVO.of(result, voList);
-    }
+        items.sort(conversationComparator());
 
-    /**
-     * 获取 AI 用户的 ID
-     */
-    private Long getAiUserId() {
-        // 查找 role=3 的 AI 用户
-        User aiUser = userMapper.selectOne(
-                new LambdaQueryWrapper<User>()
-                        .eq(User::getRole, User.ROLE_AI)
-                        .last("LIMIT 1")
-        );
-        return aiUser != null ? aiUser.getId() : null;
+        if (aiConversation != null) {
+            ConversationVO aiVO = buildConversationVO(aiConversation, userId);
+            aiVO.setIsPinned(true);
+            aiVO.setIsAiConversation(true);
+            aiVO.setOpponentNickname("AI好友Talk");
+            items.add(0, aiVO);
+        }
+
+        return paginate(items, page, pageSize);
     }
 
     @Override
     public PageVO<Message> listMessages(Long userId, Long conversationId, int page, int pageSize) {
-        pageSize = Math.min(pageSize, 50);
-        Conversation conversation = conversationMapper.selectById(conversationId);
-        if (conversation == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND.code(), "会话不存在");
-        }
-        // 鉴权：只有会话中的用户才能查看消息
-        if (!userId.equals(conversation.getUser1Id()) && !userId.equals(conversation.getUser2Id())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN.code(), "无权查看此会话");
-        }
+        page = Math.max(page, 1);
+        pageSize = normalizePageSize(pageSize);
+
+        Conversation conversation = requireConversationParticipant(userId, conversationId);
+        LocalDateTime clearedAt = getConversationClearedAt(conversation, userId);
 
         Page<Message> result = messageMapper.selectPage(
                 new Page<>(page, pageSize),
-                new LambdaQueryWrapper<Message>()
-                        .eq(Message::getConversationId, conversationId)
-                        .orderByAsc(Message::getCreatedAt)
+                buildVisibleMessageQuery(conversationId, userId, clearedAt)
+                        .orderByDesc(Message::getCreatedAt)
         );
-        return PageVO.of(result, result.getRecords());
+        List<Message> records = new ArrayList<>(result.getRecords());
+        Collections.reverse(records);
+        return PageVO.of(result, records);
     }
 
     @Override
     @Transactional
     public void readConversation(Long userId, Long conversationId) {
-        Conversation conversation = conversationMapper.selectById(conversationId);
-        if (conversation == null) return;
-        if (!userId.equals(conversation.getUser1Id()) && !userId.equals(conversation.getUser2Id())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN.code(), "无权操作此会话");
-        }
-
-        // 标记消息已读
+        Conversation conversation = requireConversationParticipant(userId, conversationId);
         messageMapper.markConversationRead(conversationId, userId);
-
-        // 清零会话维度未读计数
-        if (userId.equals(conversation.getUser1Id())) {
-            conversationMapper.clearUser1Unread(conversationId);
-        } else {
-            conversationMapper.clearUser2Unread(conversationId);
-        }
+        clearConversationUnreadForUser(conversation, userId);
+        conversationMapper.updateById(conversation);
     }
 
     @Override
     public long countTotalUnread(Long userId) {
-        // 使用数据库聚合函数直接在SQL层计算，更高效
         return conversationMapper.countTotalUnread(userId);
     }
 
     @Override
     @Transactional
     public void deleteConversation(Long userId, Long conversationId) {
-        Conversation conversation = conversationMapper.selectById(conversationId);
-        if (conversation == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND.code(), "会话不存在");
-        }
-        // 鉴权：只有会话中的用户才能删除
-        if (!userId.equals(conversation.getUser1Id()) && !userId.equals(conversation.getUser2Id())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN.code(), "无权操作此会话");
-        }
+        Conversation conversation = requireConversationParticipant(userId, conversationId);
+        messageMapper.markConversationRead(conversationId, userId);
+        clearConversationUnreadForUser(conversation, userId);
 
-        // 删除会话的所有消息
-        messageMapper.delete(new LambdaQueryWrapper<Message>()
-                .eq(Message::getConversationId, conversationId));
-
-        // 删除会话
-        conversationMapper.deleteById(conversationId);
+        LocalDateTime now = LocalDateTime.now();
+        if (userId.equals(conversation.getUser1Id())) {
+            conversation.setUser1DeletedAt(now);
+        } else {
+            conversation.setUser2DeletedAt(now);
+        }
+        conversationMapper.updateById(conversation);
     }
 
     @Override
     @Transactional
     public void clearMessages(Long userId, Long conversationId) {
-        Conversation conversation = conversationMapper.selectById(conversationId);
-        if (conversation == null) {
-            throw new BusinessException(ErrorCode.NOT_FOUND.code(), "会话不存在");
-        }
-        // 鉴权：只有会话中的用户才能清空
-        if (!userId.equals(conversation.getUser1Id()) && !userId.equals(conversation.getUser2Id())) {
-            throw new BusinessException(ErrorCode.FORBIDDEN.code(), "无权操作此会话");
-        }
+        Conversation conversation = requireConversationParticipant(userId, conversationId);
+        messageMapper.markConversationRead(conversationId, userId);
+        clearConversationUnreadForUser(conversation, userId);
 
-        // 删除会话的所有消息
-        messageMapper.delete(new LambdaQueryWrapper<Message>()
-                .eq(Message::getConversationId, conversationId));
-
-        // 重置会话的最后消息
-        conversation.setLastMessage(null);
-        conversation.setLastMessageAt(null);
-        conversation.setUser1Unread(0);
-        conversation.setUser2Unread(0);
+        LocalDateTime now = LocalDateTime.now();
+        if (userId.equals(conversation.getUser1Id())) {
+            conversation.setUser1ClearedAt(now);
+        } else {
+            conversation.setUser2ClearedAt(now);
+        }
         conversationMapper.updateById(conversation);
     }
 
@@ -453,13 +349,9 @@ public class MessageServiceImpl implements MessageService {
         if (message == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND.code(), "消息不存在");
         }
-
-        // 鉴权：只能撤回自己发送的消息
         if (!message.getSenderId().equals(userId)) {
             throw new BusinessException(ErrorCode.FORBIDDEN.code(), "只能撤回自己发送的消息");
         }
-
-        // 检查消息是否在可撤回时间范围内（5分钟内）
         if (message.getCreatedAt() != null) {
             LocalDateTime fiveMinutesAgo = LocalDateTime.now().minusMinutes(5);
             if (message.getCreatedAt().isBefore(fiveMinutesAgo)) {
@@ -467,42 +359,19 @@ public class MessageServiceImpl implements MessageService {
             }
         }
 
-        // 将消息内容替换为撤回提示
-        message.setContent("【此消息已被撤回】");
-        message.setIsRecalled(1); // 标记为已撤回
+        message.setContent(RECALLED_PLACEHOLDER);
+        message.setIsRecalled(1);
         messageMapper.updateById(message);
 
-        // 更新会话的最后消息
-        Conversation conversation = conversationMapper.selectById(message.getConversationId());
-        if (conversation != null && conversation.getLastMessage() != null
-                && conversation.getLastMessage().contains(message.getContent())) {
-            // 查找倒数第二条消息作为新的 last_message
-            Message lastMsg = messageMapper.selectOne(
-                    new LambdaQueryWrapper<Message>()
-                            .eq(Message::getConversationId, message.getConversationId())
-                            .ne(Message::getId, messageId)
-                            .orderByDesc(Message::getCreatedAt)
-                            .last("LIMIT 1")
-            );
-            if (lastMsg != null) {
-                conversation.setLastMessage(lastMsg.getContent());
-                conversation.setLastMessageAt(lastMsg.getCreatedAt());
-            } else {
-                conversation.setLastMessage(null);
-                conversation.setLastMessageAt(null);
-            }
-            conversationMapper.updateById(conversation);
-        }
+        refreshConversationLastMessage(message.getConversationId());
 
-        // 通过 WebSocket 通知对方消息被撤回
         try {
-            Long receiverId = message.getReceiverId();
             Map<String, Object> notification = new HashMap<>();
             notification.put("type", "message_recalled");
             notification.put("messageId", messageId);
             notification.put("conversationId", message.getConversationId());
             messagingTemplate.convertAndSendToUser(
-                    receiverId.toString(),
+                    message.getReceiverId().toString(),
                     "/queue/messages",
                     notification
             );
@@ -519,35 +388,214 @@ public class MessageServiceImpl implements MessageService {
         if (message == null) {
             throw new BusinessException(ErrorCode.NOT_FOUND.code(), "消息不存在");
         }
-
-        // 鉴权：发送方或接收方都可以删除消息（删除仅本地可见）
-        if (!message.getSenderId().equals(userId) && !message.getReceiverId().equals(userId)) {
+        if (!userId.equals(message.getSenderId()) && !userId.equals(message.getReceiverId())) {
             throw new BusinessException(ErrorCode.FORBIDDEN.code(), "无权删除此消息");
         }
 
-        // 执行删除
-        messageMapper.deleteById(messageId);
-
-        // 如果删除的是最后一条消息，更新会话的 last_message
-        Conversation conversation = conversationMapper.selectById(message.getConversationId());
-        if (conversation != null) {
-            Message lastMsg = messageMapper.selectOne(
-                    new LambdaQueryWrapper<Message>()
-                            .eq(Message::getConversationId, message.getConversationId())
-                            .ne(Message::getId, messageId)
-                            .orderByDesc(Message::getCreatedAt)
-                            .last("LIMIT 1")
-            );
-            if (lastMsg != null) {
-                conversation.setLastMessage(lastMsg.getContent());
-                conversation.setLastMessageAt(lastMsg.getCreatedAt());
-            } else {
-                conversation.setLastMessage(null);
-                conversation.setLastMessageAt(null);
-                conversation.setUser1Unread(0);
-                conversation.setUser2Unread(0);
-            }
-            conversationMapper.updateById(conversation);
+        LocalDateTime now = LocalDateTime.now();
+        if (userId.equals(message.getSenderId())) {
+            message.setSenderDeletedAt(now);
+        } else {
+            message.setReceiverDeletedAt(now);
         }
+        messageMapper.updateById(message);
+    }
+
+    private Conversation ensureAiConversation(Long userId, Long aiUserId) {
+        if (aiUserId == null) {
+            return null;
+        }
+
+        Long user1Id = Math.min(userId, aiUserId);
+        Long user2Id = Math.max(userId, aiUserId);
+        Conversation aiConversation = conversationMapper.selectOne(
+                new LambdaQueryWrapper<Conversation>()
+                        .eq(Conversation::getUser1Id, user1Id)
+                        .eq(Conversation::getUser2Id, user2Id)
+        );
+        if (aiConversation != null) {
+            return aiConversation;
+        }
+
+        Conversation newConversation = new Conversation();
+        newConversation.setUser1Id(user1Id);
+        newConversation.setUser2Id(user2Id);
+        newConversation.setUser1Unread(0);
+        newConversation.setUser2Unread(0);
+        try {
+            conversationMapper.insert(newConversation);
+            return newConversation;
+        } catch (Exception e) {
+            return conversationMapper.selectOne(
+                    new LambdaQueryWrapper<Conversation>()
+                            .eq(Conversation::getUser1Id, user1Id)
+                            .eq(Conversation::getUser2Id, user2Id)
+            );
+        }
+    }
+
+    private Long getAiUserId() {
+        User aiUser = userMapper.selectOne(
+                new LambdaQueryWrapper<User>()
+                        .eq(User::getRole, User.ROLE_AI)
+                        .last("LIMIT 1")
+        );
+        return aiUser != null ? aiUser.getId() : null;
+    }
+
+    private Conversation requireConversationParticipant(Long userId, Long conversationId) {
+        Conversation conversation = conversationMapper.selectById(conversationId);
+        if (conversation == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND.code(), "会话不存在");
+        }
+        if (!userId.equals(conversation.getUser1Id()) && !userId.equals(conversation.getUser2Id())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN.code(), "无权操作此会话");
+        }
+        return conversation;
+    }
+
+    private void touchConversationOnNewMessage(Conversation conversation, Long receiverId, String preview, LocalDateTime sentAt) {
+        conversation.setLastMessage(preview);
+        conversation.setLastMessageAt(sentAt);
+        conversation.setUser1DeletedAt(null);
+        conversation.setUser2DeletedAt(null);
+        conversation.setUser1Unread(defaultZero(conversation.getUser1Unread()));
+        conversation.setUser2Unread(defaultZero(conversation.getUser2Unread()));
+        if (receiverId.equals(conversation.getUser1Id())) {
+            conversation.setUser1Unread(conversation.getUser1Unread() + 1);
+        } else {
+            conversation.setUser2Unread(conversation.getUser2Unread() + 1);
+        }
+    }
+
+    private void clearConversationUnreadForUser(Conversation conversation, Long userId) {
+        if (userId.equals(conversation.getUser1Id())) {
+            conversation.setUser1Unread(0);
+        } else {
+            conversation.setUser2Unread(0);
+        }
+    }
+
+    private LocalDateTime getConversationClearedAt(Conversation conversation, Long userId) {
+        return userId.equals(conversation.getUser1Id())
+                ? conversation.getUser1ClearedAt()
+                : conversation.getUser2ClearedAt();
+    }
+
+    private LambdaQueryWrapper<Message> buildVisibleMessageQuery(Long conversationId, Long userId, LocalDateTime clearedAt) {
+        LambdaQueryWrapper<Message> wrapper = new LambdaQueryWrapper<Message>()
+                .eq(Message::getConversationId, conversationId)
+                .and(inner -> inner
+                        .nested(sender -> sender
+                                .eq(Message::getSenderId, userId)
+                                .isNull(Message::getSenderDeletedAt))
+                        .or(receiver -> receiver
+                                .eq(Message::getReceiverId, userId)
+                                .isNull(Message::getReceiverDeletedAt)));
+        if (clearedAt != null) {
+            wrapper.gt(Message::getCreatedAt, clearedAt);
+        }
+        return wrapper;
+    }
+
+    private Message findLatestVisibleMessage(Long conversationId, Long userId, LocalDateTime clearedAt) {
+        return messageMapper.selectOne(
+                buildVisibleMessageQuery(conversationId, userId, clearedAt)
+                        .orderByDesc(Message::getCreatedAt)
+                        .last("LIMIT 1")
+        );
+    }
+
+    private void refreshConversationLastMessage(Long conversationId) {
+        Conversation conversation = conversationMapper.selectById(conversationId);
+        if (conversation == null) {
+            return;
+        }
+
+        Message latestMessage = messageMapper.selectOne(
+                new LambdaQueryWrapper<Message>()
+                        .eq(Message::getConversationId, conversationId)
+                        .orderByDesc(Message::getCreatedAt)
+                        .last("LIMIT 1")
+        );
+
+        if (latestMessage == null) {
+            conversation.setLastMessage(null);
+            conversation.setLastMessageAt(null);
+        } else {
+            conversation.setLastMessage(buildPreview(latestMessage.getContent()));
+            conversation.setLastMessageAt(latestMessage.getCreatedAt());
+        }
+        conversationMapper.updateById(conversation);
+    }
+
+    private ConversationVO buildConversationVO(Conversation conversation, Long currentUserId) {
+        Long opponentId = currentUserId.equals(conversation.getUser1Id())
+                ? conversation.getUser2Id()
+                : conversation.getUser1Id();
+        User opponent = userMapper.selectById(opponentId);
+        ConversationVO vo = ConversationVO.from(conversation, currentUserId, UserVO.from(opponent));
+        if (vo.getOpponentId() == null) {
+            vo.setOpponentId(opponentId);
+        }
+
+        Message latestVisibleMessage = findLatestVisibleMessage(
+                conversation.getId(),
+                currentUserId,
+                getConversationClearedAt(conversation, currentUserId)
+        );
+        if (latestVisibleMessage == null) {
+            vo.setLastMessage(null);
+            vo.setLastMessageAt(null);
+        } else {
+            vo.setLastMessage(buildPreview(latestVisibleMessage.getContent()));
+            vo.setLastMessageAt(latestVisibleMessage.getCreatedAt());
+        }
+        return vo;
+    }
+
+    private Comparator<ConversationVO> conversationComparator() {
+        Comparator<LocalDateTime> timeComparator = Comparator.nullsLast(Comparator.reverseOrder());
+        return Comparator
+                .comparing((ConversationVO vo) -> Boolean.TRUE.equals(vo.getIsPinned())).reversed()
+                .thenComparing(ConversationVO::getLastMessageAt, timeComparator)
+                .thenComparing(ConversationVO::getId, Comparator.nullsLast(Comparator.reverseOrder()));
+    }
+
+    private PageVO<ConversationVO> paginate(List<ConversationVO> items, int page, int pageSize) {
+        int total = items.size();
+        int totalPages = total == 0 ? 0 : (int) Math.ceil((double) total / pageSize);
+        int fromIndex = Math.min((page - 1) * pageSize, total);
+        int toIndex = Math.min(fromIndex + pageSize, total);
+
+        PageVO<ConversationVO> pageVO = new PageVO<>();
+        pageVO.setList(new ArrayList<>(items.subList(fromIndex, toIndex)));
+        pageVO.setPage(page);
+        pageVO.setPageSize(pageSize);
+        pageVO.setTotal(total);
+        pageVO.setTotalPages(totalPages);
+        return pageVO;
+    }
+
+    private int normalizePageSize(int pageSize) {
+        return Math.min(Math.max(pageSize, 1), MAX_PAGE_SIZE);
+    }
+
+    private int defaultZero(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private String buildPreview(String content) {
+        if (content == null) {
+            return null;
+        }
+        String normalized = content.replaceAll("\\s+", " ").trim();
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        if (normalized.length() > MAX_PREVIEW_LENGTH) {
+            return normalized.substring(0, MAX_PREVIEW_LENGTH) + "...";
+        }
+        return normalized;
     }
 }

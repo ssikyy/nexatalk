@@ -12,7 +12,7 @@ public interface AiService {
     /**
      * 对帖子正文生成 AI 摘要
      *
-     * @param content 原始正文（Markdown）
+     * @param content 原始正文（富文本 HTML 或旧 Markdown）
      * @return 摘要文本；降级时返回原文前 200 字
      */
     String summarize(String content);

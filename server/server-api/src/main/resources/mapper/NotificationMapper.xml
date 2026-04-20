@@ -8,7 +8,7 @@
         VALUES
         <foreach collection="list" item="item" separator=",">
             (#{item.userId}, #{item.actorId}, #{item.type}, #{item.title}, #{item.content}, #{item.contentType},
-             #{item.imageUrl}, #{item.isPinned}, #{item.isBold}, #{item.isRead}, #{item.entityType}, #{item.entityId}, #{item.broadcastId}, NOW())
+             #{item.imageUrl}, #{item.isPinned}, #{item.isBold}, #{item.isRead}, #{item.entityType}, #{item.entityId}, #{item.broadcastId}, #{item.createdAt})
         </foreach>
     </insert>
 

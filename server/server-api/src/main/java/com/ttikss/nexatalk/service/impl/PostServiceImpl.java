@@ -20,6 +20,7 @@ import com.ttikss.nexatalk.security.UserContext;
 import com.ttikss.nexatalk.service.AiService;
 import com.ttikss.nexatalk.service.PostService;
 import com.ttikss.nexatalk.util.FileUtils;
+import com.ttikss.nexatalk.util.PostContentUtils;
 import com.ttikss.nexatalk.vo.PageVO;
 import com.ttikss.nexatalk.vo.PostVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -75,13 +76,9 @@ public class PostServiceImpl implements PostService {
         // 检查用户账号状态（禁言用户不能发帖）
         checkUserNotMuted(userId);
 
-        // 内容长度校验
-        if (req.getContent() != null && req.getContent().length() > Post.MAX_CONTENT_LENGTH) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST.code(), "内容长度不能超过 " + Post.MAX_CONTENT_LENGTH + " 个字符");
-        }
-        if (req.getTitle() != null && req.getTitle().length() > Post.MAX_TITLE_LENGTH) {
-            throw new BusinessException(ErrorCode.BAD_REQUEST.code(), "标题长度不能超过 " + Post.MAX_TITLE_LENGTH + " 个字符");
-        }
+        String title = normalizeTitle(req.getTitle());
+        String content = prepareContent(req.getContent(), req.getAiPolish());
+        validatePostPayload(title, content, req.getImages());
 
         // 检查分区是否存在且正常
         Section section = sectionMapper.selectById(req.getSectionId());
@@ -89,21 +86,17 @@ public class PostServiceImpl implements PostService {
             throw new BusinessException(ErrorCode.BAD_REQUEST.code(), "分区不存在或已禁用");
         }
 
+        List<String> resolvedImages = PostContentUtils.resolveImages(content, req.getImages());
+
         Post post = new Post();
         post.setUserId(userId);
         post.setSectionId(req.getSectionId());
-        post.setTitle(req.getTitle());
-
-        // 如果请求使用 AI 润色，则调用 AI 服务
-        String content = req.getContent();
-        if (Boolean.TRUE.equals(req.getAiPolish())) {
-            content = aiService.polish(content);
-        }
+        post.setTitle(title);
         post.setContent(content);
 
-        post.setCoverUrl(StringUtils.hasText(req.getCoverUrl()) ? req.getCoverUrl() : null);
-        // 保存图片列表为JSON
-        post.setImages(serializeImages(req.getImages()));
+        post.setCoverUrl(PostContentUtils.normalizeMediaUrl(req.getCoverUrl()));
+        // 保存图片列表为 JSON，优先以正文中的实际图片为准
+        post.setImages(serializeImages(resolvedImages));
         // 保存标签列表为JSON
         post.setTags(serializeTags(req.getTags()));
         // draft=true 保存草稿，否则直接发布（状态=正常）
@@ -136,23 +129,20 @@ public class PostServiceImpl implements PostService {
             }
         }
 
+        String title = normalizeTitle(req.getTitle());
+        String content = prepareContent(req.getContent(), req.getAiPolish());
+        validatePostPayload(title, content, req.getImages());
+        List<String> resolvedImages = PostContentUtils.resolveImages(content, req.getImages());
+
         LambdaUpdateWrapper<Post> wrapper = new LambdaUpdateWrapper<Post>()
                 .eq(Post::getId, postId);
 
-        if (req.getSectionId() != null) wrapper.set(Post::getSectionId, req.getSectionId());
-        if (StringUtils.hasText(req.getTitle())) wrapper.set(Post::getTitle, req.getTitle());
+        wrapper.set(Post::getSectionId, req.getSectionId());
+        wrapper.set(Post::getTitle, title);
+        wrapper.set(Post::getContent, content);
+        wrapper.set(Post::getImages, serializeImages(resolvedImages));
 
-        // 如果请求使用 AI 润色，则调用 AI 服务
-        if (StringUtils.hasText(req.getContent())) {
-            String content = req.getContent();
-            if (Boolean.TRUE.equals(req.getAiPolish())) {
-                content = aiService.polish(content);
-            }
-            wrapper.set(Post::getContent, content);
-        }
-
-        if (req.getCoverUrl() != null) wrapper.set(Post::getCoverUrl, req.getCoverUrl());
-        if (req.getImages() != null) wrapper.set(Post::getImages, serializeImages(req.getImages()));
+        if (req.getCoverUrl() != null) wrapper.set(Post::getCoverUrl, PostContentUtils.normalizeMediaUrl(req.getCoverUrl()));
         // 更新标签
         if (req.getTags() != null) {
             wrapper.set(Post::getTags, serializeTags(req.getTags()));
@@ -292,6 +282,30 @@ public class PostServiceImpl implements PostService {
         User user = userMapper.selectById(userId);
         if (user != null && !Integer.valueOf(User.STATUS_NORMAL).equals(user.getStatus())) {
             throw new BusinessException(ErrorCode.FORBIDDEN.code(), "账号已被限制，无法发帖");
+        }
+    }
+
+    private String normalizeTitle(String title) {
+        return title == null ? "" : title.trim();
+    }
+
+    private String prepareContent(String content, Boolean aiPolish) {
+        String prepared = content == null ? "" : content.trim();
+        if (Boolean.TRUE.equals(aiPolish)) {
+            prepared = aiService.polish(prepared);
+        }
+        return PostContentUtils.normalizeContent(prepared);
+    }
+
+    private void validatePostPayload(String title, String content, List<String> fallbackImages) {
+        if (title.length() > Post.MAX_TITLE_LENGTH) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST.code(), "标题长度不能超过 " + Post.MAX_TITLE_LENGTH + " 个字符");
+        }
+        if (content.length() > Post.MAX_CONTENT_LENGTH) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST.code(), "内容长度不能超过 " + Post.MAX_CONTENT_LENGTH + " 个字符");
+        }
+        if (!PostContentUtils.hasMeaningfulContent(content, fallbackImages)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST.code(), "正文内容不能为空");
         }
     }
 
