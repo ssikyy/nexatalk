@@ -15,8 +15,12 @@
 - `deploy/.env.prod.example`
 - `deploy/Caddyfile`
 - `deploy/update-on-server.sh`
+- `deploy/ops-status.sh`
+- `deploy/logs.sh`
+- `deploy/backup-mysql.sh`
 - `server/server-api/Dockerfile`
 - `web/Dockerfile`
+- `OPS_RUNBOOK.md`
 
 ## 首次部署前准备
 
@@ -159,3 +163,5 @@ APP_DIR=/opt/nexatalk APP_BRANCH=<当前分支> sh /opt/nexatalk/deploy/update-o
 - 方案 B：本地手工 SSH 到服务器执行这个脚本
 
 如果你愿意，下一步我就可以继续带你做 GCP 服务器初始化和首发部署命令。
+
+补充：日常运维请优先查看 `OPS_RUNBOOK.md`。
