@@ -3,7 +3,7 @@
 SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 . "$SCRIPT_DIR/common.sh"
 
-SITE_HOST="${SITE_ADDRESS:-}"
+SITE_HOST="$(env_value SITE_ADDRESS)"
 HEALTH_URL="${HEALTH_URL:-}"
 
 if [ -z "$HEALTH_URL" ] && [ -n "$SITE_HOST" ]; then
