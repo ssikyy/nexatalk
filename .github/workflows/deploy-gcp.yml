@@ -4,13 +4,12 @@ on:
   push:
     branches:
       - main
-      - codex-gcp-docker-deploy
   workflow_dispatch:
     inputs:
       branch:
         description: Branch to deploy
         required: false
-        default: codex-gcp-docker-deploy
+        default: main
 
 jobs:
   deploy:

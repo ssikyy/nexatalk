@@ -65,16 +65,23 @@ TAIL_LINES=50 sh deploy/logs.sh backend
 
 正常流程是：
 
-1. 本地把改动推到 GitHub 指定分支。
-2. GitHub Actions 通过 SSH 登录服务器。
-3. 服务器执行 `deploy/update-on-server.sh`。
-4. 脚本拉取最新代码并重建容器。
+1. 本地在功能分支完成开发和自测。
+2. 通过合并或推送让正式发布内容进入 `main`。
+3. GitHub Actions 监听 `main` 并通过 SSH 登录服务器。
+4. 服务器执行 `deploy/update-on-server.sh`，切到 `main` 并重建容器。
 
-如果要手工部署某个分支：
+如果要手工部署正式分支：
 
 ```bash
 cd /opt/nexatalk
-APP_BRANCH=codex-gcp-docker-deploy sh deploy/update-on-server.sh
+APP_BRANCH=main sh deploy/update-on-server.sh
+```
+
+如果要手工部署某个测试分支：
+
+```bash
+cd /opt/nexatalk
+APP_BRANCH=<你的分支名> sh deploy/update-on-server.sh
 ```
 
 如果只是更新当前分支：
@@ -205,6 +212,7 @@ sh deploy/ops-status.sh
 - GitHub Variables 里的 `DEPLOY_HOST` 是否只填主机名或 IP，不要带 `http://`、`https://`、空格
 - 服务器上的 `authorized_keys` 是否包含对应公钥
 - 服务器仓库目录是否仍是 `/opt/nexatalk`
+- GitHub Actions 当前是否由 `main` 触发，而不是误从测试分支触发
 
 ## 建议的例行操作
 

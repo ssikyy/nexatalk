@@ -107,8 +107,13 @@ sh deploy/update-on-server.sh
 它会在以下情况自动部署到服务器：
 
 - push 到 `main`
-- push 到 `codex-gcp-docker-deploy`
 - 手工触发并指定分支
+
+现在建议把 `main` 作为唯一生产发布分支：
+
+- 日常开发先在功能分支完成
+- 合并到 `main` 后自动触发正式环境部署
+- 只有在测试或应急时，才手工触发并指定其他分支
 
 ### 你需要在 GitHub 仓库配置这些 Variables
 
@@ -148,6 +153,8 @@ chmod 600 ~/.ssh/authorized_keys
 ```bash
 APP_DIR=/opt/nexatalk APP_BRANCH=<当前分支> sh /opt/nexatalk/deploy/update-on-server.sh
 ```
+
+如果是自动发布到正式环境，这里的 `<当前分支>` 默认就是 `main`。
 
 ## 验证点
 
