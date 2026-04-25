@@ -216,7 +216,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/stores/user'
@@ -263,12 +263,37 @@ const menuNames = {
 
 const currentMenuName = computed(() => menuNames[activeMenu.value] || '')
 
+const resolveMenuFromRoute = (tab) => (tab && menuNames[tab] ? tab : 'overview')
+
+const syncMenuToRoute = async (menu) => {
+  const nextMenu = resolveMenuFromRoute(menu)
+  activeMenu.value = nextMenu
+
+  const nextQuery = { ...route.query }
+  if (nextMenu === 'overview') {
+    delete nextQuery.tab
+  } else {
+    nextQuery.tab = nextMenu
+  }
+
+  const currentTab = typeof route.query.tab === 'string' ? route.query.tab : undefined
+  const normalizedCurrentTab = resolveMenuFromRoute(currentTab)
+  const nextTab = nextMenu === 'overview' ? undefined : nextMenu
+  const normalizedRouteTab = normalizedCurrentTab === 'overview' ? undefined : normalizedCurrentTab
+
+  if (currentTab === nextTab || (!currentTab && nextMenu === 'overview') || normalizedRouteTab === nextTab) {
+    return
+  }
+
+  await router.replace({ path: route.path, query: nextQuery })
+}
+
 const handleMenuSelect = (key) => {
-  activeMenu.value = key
+  syncMenuToRoute(key)
 }
 
 const goToMenu = (menu) => {
-  activeMenu.value = menu
+  syncMenuToRoute(menu)
 }
 
 const goBackHome = () => {
@@ -281,7 +306,7 @@ const handleCommand = (command) => {
   } else if (command === 'profile') {
     router.push(`/user/${userStore.userInfo?.userId}`)
   } else if (command === 'ai') {
-    activeMenu.value = 'ai'
+    syncMenuToRoute('ai')
   }
 }
 
@@ -315,12 +340,15 @@ const loadStats = async () => {
   }
 }
 
-// 检查 URL query 参数
+watch(
+  () => route.query.tab,
+  (tab) => {
+    activeMenu.value = resolveMenuFromRoute(tab)
+  },
+  { immediate: true }
+)
+
 onMounted(() => {
-  const tab = route.query.tab
-  if (tab && menuNames[tab]) {
-    activeMenu.value = tab
-  }
   loadStats()
 })
 </script>
