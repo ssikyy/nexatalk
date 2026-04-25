@@ -22,3 +22,6 @@ deploy/.env.prod
 # Runtime uploads
 uploads/
 server/server-api/uploads/
+
+# Ops artifacts
+backups/

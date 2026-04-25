@@ -2,14 +2,15 @@
   <div class="admin-page">
     <!-- 操作栏 -->
     <div class="action-bar">
-      <div class="action-title">
-        <el-icon><Bell /></el-icon>
-        <span>系统通知管理</span>
-      </div>
-      <el-button type="primary" @click="$router.push('/admin/notification/create')">
-        <el-icon><Plus />发布通知</el-icon>
-      </el-button>
+    <div class="action-title">
+      <el-icon><Bell /></el-icon>
+      <span>系统通知管理</span>
     </div>
+    <el-button class="publish-btn" type="primary" @click="$router.push('/admin/notification/create')">
+      <el-icon><Plus /></el-icon>
+      <span>发布通知</span>
+    </el-button>
+  </div>
 
     <!-- 数据表格 -->
     <el-table
@@ -148,6 +149,8 @@ onMounted(loadNotifications)
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
 .action-title {
@@ -161,6 +164,20 @@ onMounted(loadNotifications)
 
 .action-title .el-icon {
   color: #409eff;
+}
+
+.publish-btn {
+  min-width: 128px;
+  height: 42px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 12px;
+  font-weight: 600;
+  box-shadow: 0 10px 24px rgba(64, 158, 255, 0.22);
+}
+
+.publish-btn :deep(.el-icon) {
+  margin-right: 6px;
 }
 
 /* 表格容器 */
@@ -212,5 +229,15 @@ onMounted(loadNotifications)
 :deep(.el-dialog__footer) {
   border-top: 1px solid #f0f0f0;
   padding-top: 16px;
+}
+
+@media (max-width: 768px) {
+  .action-bar {
+    align-items: stretch;
+  }
+
+  .publish-btn {
+    width: 100%;
+  }
 }
 </style>

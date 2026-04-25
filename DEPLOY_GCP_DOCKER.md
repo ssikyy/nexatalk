@@ -15,8 +15,12 @@
 - `deploy/.env.prod.example`
 - `deploy/Caddyfile`
 - `deploy/update-on-server.sh`
+- `deploy/ops-status.sh`
+- `deploy/logs.sh`
+- `deploy/backup-mysql.sh`
 - `server/server-api/Dockerfile`
 - `web/Dockerfile`
+- `OPS_RUNBOOK.md`
 
 ## 首次部署前准备
 
@@ -94,6 +98,64 @@ sh deploy/update-on-server.sh
 3. 重启生产容器
 4. 清理悬空镜像
 
+## 自动更新
+
+仓库里已经提供 GitHub Actions 工作流：
+
+- `.github/workflows/deploy-gcp.yml`
+
+它会在以下情况自动部署到服务器：
+
+- push 到 `main`
+- 手工触发并指定分支
+
+现在建议把 `main` 作为唯一生产发布分支：
+
+- 日常开发先在功能分支完成
+- 合并到 `main` 后自动触发正式环境部署
+- 只有在测试或应急时，才手工触发并指定其他分支
+
+### 你需要在 GitHub 仓库配置这些 Variables
+
+- `DEPLOY_HOST`：服务器 IP 或域名
+- `DEPLOY_USER`：服务器登录用户
+- `DEPLOY_PORT`：SSH 端口，默认 `22`
+- `DEPLOY_APP_DIR`：服务器部署目录，默认 `/opt/nexatalk`
+
+### 你需要在 GitHub 仓库配置这个 Secret
+
+- `DEPLOY_SSH_KEY`：用于登录服务器的私钥内容
+
+### 服务器侧要做的一次性准备
+
+1. 生成一对部署专用 SSH 密钥。
+2. 把公钥追加到服务器用户的 `~/.ssh/authorized_keys`。
+3. 把私钥内容保存到 GitHub Secret `DEPLOY_SSH_KEY`。
+
+示例：
+
+```bash
+ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/nexatalk_deploy
+cat ~/.ssh/nexatalk_deploy.pub
+```
+
+把上面的公钥追加到服务器：
+
+```bash
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+cat >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+```
+
+工作流执行时，会在服务器上运行：
+
+```bash
+APP_DIR=/opt/nexatalk APP_BRANCH=<当前分支> sh /opt/nexatalk/deploy/update-on-server.sh
+```
+
+如果是自动发布到正式环境，这里的 `<当前分支>` 默认就是 `main`。
+
 ## 验证点
 
 - 首页是否能通过 `https://你的域名` 打开
@@ -108,3 +170,5 @@ sh deploy/update-on-server.sh
 - 方案 B：本地手工 SSH 到服务器执行这个脚本
 
 如果你愿意，下一步我就可以继续带你做 GCP 服务器初始化和首发部署命令。
+
+补充：日常运维请优先查看 `OPS_RUNBOOK.md`。

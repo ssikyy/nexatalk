@@ -25,7 +25,7 @@
                 <el-option
                   v-for="user in searchResults"
                   :key="user.id"
-                  :label="user.nickname || user.username"
+                  :label="getUserOptionLabel(user)"
                   :value="user.id"
                 >
                   <div class="user-option">
@@ -225,12 +225,13 @@
             placeholder="搜索用户名或昵称"
             :remote-method="searchHistoryUsers"
             :loading="searchingHistoryUser"
+            @change="handleHistoryUserChange"
             style="width: 280px"
           >
             <el-option
               v-for="user in historySearchResults"
               :key="user.id"
-              :label="user.nickname || user.username"
+              :label="getUserOptionLabel(user)"
               :value="user.id"
             >
               <div class="user-option">
@@ -469,20 +470,32 @@ const clearReportsForEntity = async (entityType, entityId) => {
   }
 }
 
-let searchTimer = null
+let punishSearchTimer = null
+let historySearchTimer = null
+
+const getUserOptionLabel = (user) => {
+  if (!user) return ''
+  const nickname = (user.nickname || '').trim()
+  const username = (user.username || '').trim()
+  if (nickname && username && nickname !== username) {
+    return `${nickname} (@${username})`
+  }
+  return nickname || username
+}
 
 // 搜索用户（处罚表单用）
 const searchUsers = (keyword) => {
-  if (!keyword) {
+  const normalizedKeyword = (keyword || '').trim()
+  if (!normalizedKeyword) {
     searchResults.value = []
     return Promise.resolve()
   }
-  clearTimeout(searchTimer)
+  clearTimeout(punishSearchTimer)
   return new Promise((resolve) => {
-    searchTimer = setTimeout(async () => {
+    punishSearchTimer = setTimeout(async () => {
       searchingUser.value = true
       try {
-        const res = await adminListUsers({ page: 1, pageSize: 10, username: keyword })
+        const res = await adminListUsers({ page: 1, pageSize: 10, username: normalizedKeyword })
         searchResults.value = res.data?.list || []
       } catch (e) {
         console.error('搜索用户失败', e)
@@ -496,15 +509,16 @@ const searchUsers = (keyword) => {
 
 // 搜索用户（历史查询用）
 const searchHistoryUsers = (keyword) => {
-  if (!keyword) {
+  const normalizedKeyword = (keyword || '').trim()
+  if (!normalizedKeyword) {
     historySearchResults.value = []
     return
   }
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(async () => {
+  clearTimeout(historySearchTimer)
+  historySearchTimer = setTimeout(async () => {
     searchingHistoryUser.value = true
     try {
-      const res = await adminListUsers({ page: 1, pageSize: 10, username: keyword })
+      const res = await adminListUsers({ page: 1, pageSize: 10, username: normalizedKeyword })
       historySearchResults.value = res.data?.list || []
     } catch (e) {
       console.error('搜索用户失败', e)
@@ -518,6 +532,14 @@ const searchHistoryUsers = (keyword) => {
 const handleUserSelect = (userId) => {
   const user = searchResults.value.find(u => u.id === userId)
   selectedUser.value = user || null
+}
+
+const handleHistoryUserChange = async (userId) => {
+  if (!userId) {
+    historyPunishments.value = []
+    return
+  }
+  await fetchUserHistory()
 }
 
 const submitPunish = async () => {

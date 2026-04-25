@@ -161,34 +161,52 @@
       <!-- 用户列表 -->
       <template v-else-if="currentTab === 'users'">
         <div class="user-grid" v-if="users.length > 0">
-          <div
+          <article
             v-for="user in users"
             :key="user.id"
             class="user-card"
             @click="$router.push(`/user/${user.id}`)"
           >
-            <el-avatar :src="user.avatarUrl" :size="64">
-              {{ user.nickname?.charAt(0) }}
-            </el-avatar>
-            <div class="user-info">
-              <span class="nickname">{{ user.nickname }}</span>
-              <span class="username">@{{ user.username }}</span>
-              <p class="bio" v-if="user.bio">{{ user.bio }}</p>
-              <div class="user-stats">
-                <span>{{ user.followerCount || 0 }} 粉丝</span>
-                <span>{{ user.postCount || 0 }} 帖子</span>
+            <div class="user-card-top">
+              <el-avatar class="user-avatar" :src="user.avatarUrl" :size="64">
+                {{ user.nickname?.charAt(0) }}
+              </el-avatar>
+              <div class="user-main">
+                <div class="user-head">
+                  <div class="user-title-group">
+                    <span class="nickname">{{ user.nickname }}</span>
+                    <span class="username">@{{ user.username }}</span>
+                  </div>
+                  <el-button
+                    v-if="userStore.isLoggedIn && userStore.userInfo?.userId !== user.id"
+                    :type="user.isFollowing ? 'default' : 'primary'"
+                    :class="['user-card-follow', { 'is-following': user.isFollowing }]"
+                    size="small"
+                    round
+                    @click.stop="handleFollowUser(user)"
+                  >
+                    {{ user.isFollowing ? '已关注' : '关注' }}
+                  </el-button>
+                </div>
+                <p class="bio">{{ user.bio || '这个人很懒，什么都没写' }}</p>
               </div>
             </div>
-            <el-button
-              v-if="userStore.isLoggedIn && userStore.userInfo?.userId !== user.id"
-              :type="user.isFollowing ? 'default' : 'primary'"
-              size="small"
-              round
-              @click.stop="handleFollowUser(user)"
-            >
-              {{ user.isFollowing ? '已关注' : '关注' }}
-            </el-button>
-          </div>
+            <div class="user-card-divider"></div>
+            <div class="user-stats">
+              <div class="user-stat">
+                <span class="user-stat-value">{{ user.followingCount || 0 }}</span>
+                <span class="user-stat-label">关注</span>
+              </div>
+              <div class="user-stat">
+                <span class="user-stat-value">{{ user.followerCount || 0 }}</span>
+                <span class="user-stat-label">粉丝</span>
+              </div>
+              <div class="user-stat">
+                <span class="user-stat-value">{{ user.postCount || 0 }}</span>
+                <span class="user-stat-label">帖子</span>
+              </div>
+            </div>
+          </article>
         </div>
         <el-empty v-if="users.length === 0 && !loading" description="暂无用户数据" />
       </template>
@@ -994,56 +1012,152 @@ const handleFollowUser = async (user) => {
 
 .user-card {
   display: flex;
-  align-items: center;
-  gap: 16px;
+  flex-direction: column;
   padding: 20px;
   background: #fff;
-  border-radius: 16px;
+  border-radius: 18px;
   cursor: pointer;
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-  border: 1px solid transparent;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .user-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-  border-color: rgba(102, 126, 234, 0.2);
+  box-shadow: 0 16px 34px rgba(79, 112, 255, 0.14);
+  border-color: rgba(102, 126, 234, 0.24);
 }
 
-.user-info {
-  flex: 1;
+.user-card-top {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
   min-width: 0;
 }
 
+.user-avatar {
+  flex-shrink: 0;
+  background: linear-gradient(135deg, #d1d5db 0%, #bcc5d3 100%);
+  color: #fff;
+  font-weight: 700;
+}
+
+.user-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.user-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.user-title-group {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
 .nickname {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
+  display: block;
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: #0f172a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .username {
-  font-size: 13px;
-  color: #909399;
+  display: block;
+  font-size: 14px;
+  color: #94a3b8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .bio {
-  font-size: 13px;
-  color: #606266;
-  margin: 6px 0;
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.6;
+  color: #64748b;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.user-card-follow {
+  flex-shrink: 0;
+  min-width: 78px;
+  height: 34px;
+  margin: 0;
+  padding: 0 14px;
+  border: none;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 10px 18px rgba(59, 130, 246, 0.18);
+}
+
+.user-card-follow.el-button--primary {
+  background: linear-gradient(135deg, #4f9cf9 0%, #2f8cff 100%);
+}
+
+.user-card-follow.is-following {
+  box-shadow: none;
+}
+
+.user-card-follow.is-following.el-button--default {
+  background: #eef2f7;
+  border: 1px solid rgba(203, 213, 225, 0.92);
+  color: #475569;
+}
+
+.user-card-divider {
+  width: 100%;
+  height: 1px;
+  margin: 18px 0 14px;
+  background: linear-gradient(90deg, rgba(226, 232, 240, 0.95) 0%, rgba(226, 232, 240, 0.4) 100%);
 }
 
 .user-stats {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.user-stat {
   display: flex;
-  gap: 16px;
-  font-size: 12px;
-  color: #909399;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.user-stat-value {
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.user-stat-label {
+  font-size: 13px;
+  color: #94a3b8;
 }
 
 /* 帖子列表 */
@@ -1093,6 +1207,32 @@ const handleFollowUser = async (user) => {
   .sections-grid,
   .user-grid {
     grid-template-columns: 1fr;
+  }
+
+  .user-card {
+    padding: 18px 16px;
+  }
+
+  .user-card-top {
+    gap: 14px;
+  }
+
+  .nickname {
+    font-size: 17px;
+  }
+
+  .bio {
+    font-size: 13px;
+  }
+
+  .user-card-follow {
+    min-width: 72px;
+    height: 32px;
+    padding: 0 12px;
+  }
+
+  .user-stat-value {
+    font-size: 20px;
   }
 
   .content-tabs {

@@ -11,9 +11,8 @@ import com.ttikss.nexatalk.mapper.PunishmentMapper;
 import com.ttikss.nexatalk.mapper.UserMapper;
 import com.ttikss.nexatalk.service.OperationLogService;
 import com.ttikss.nexatalk.service.PunishmentService;
+import com.ttikss.nexatalk.vo.PunishmentVO;
 import com.ttikss.nexatalk.vo.PageVO;
-import com.ttikss.nexatalk.vo.PunishmentVO;
-import com.ttikss.nexatalk.vo.PunishmentVO;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -26,7 +25,7 @@ import java.util.List;
  *
  * 权限联动逻辑：
  * 1. 下处罚 → 同步修改 user.status（禁言=1，封号=2）
- * 2. 解除处罚 → 仅当用户当前状态与该处罚类型匹配时才恢复为 0
+ * 2. 解除处罚 → 重新计算该用户剩余生效处罚，避免错误恢复为正常
  * 3. UserServiceImpl.login() 已检查 user.status 决定能否登录
  * 4. PostServiceImpl / CommentServiceImpl 已检查 status=1 拒绝发帖/评论
  */
@@ -71,11 +70,8 @@ public class PunishmentServiceImpl implements PunishmentService {
         punishment.setIsActive(Punishment.ACTIVE);
         punishmentMapper.insert(punishment);
 
-        // 联动更新用户状态
-        Integer newStatus = (request.getType() != null && request.getType() == Punishment.TYPE_MUTE)
-                ? User.STATUS_MUTED
-                : User.STATUS_BANNED;
-        user.setStatus(newStatus);
+        // 联动更新用户状态，按当前所有生效处罚重新计算，避免把封号降级成禁言
+        user.setStatus(resolveUserStatusFromActivePunishments(user.getId()));
         userMapper.updateById(user);
 
         // 记录操作日志
@@ -120,17 +116,8 @@ public class PunishmentServiceImpl implements PunishmentService {
         // 联动恢复用户状态
         User user = userMapper.selectById(punishment.getUserId());
         if (user != null) {
-            // 只有当前用户状态与该处罚类型对应时才恢复，防止误覆盖更严重的封号
-            boolean shouldRestore = (punishment.getType() != null
-                    && punishment.getType() == Punishment.TYPE_MUTE
-                    && user.getStatus() != null && user.getStatus() == User.STATUS_MUTED)
-                    || (punishment.getType() != null
-                    && punishment.getType() == Punishment.TYPE_BAN
-                    && user.getStatus() != null && user.getStatus() == User.STATUS_BANNED);
-            if (shouldRestore) {
-                user.setStatus(User.STATUS_NORMAL);
-                userMapper.updateById(user);
-            }
+            user.setStatus(resolveUserStatusFromActivePunishments(user.getId()));
+            userMapper.updateById(user);
         }
 
         // 记录操作日志
@@ -211,6 +198,36 @@ public class PunishmentServiceImpl implements PunishmentService {
             }
         }
         return vo;
+    }
+
+    private Integer resolveUserStatusFromActivePunishments(Long userId) {
+        if (userId == null) {
+            return User.STATUS_NORMAL;
+        }
+
+        List<Punishment> activePunishments = punishmentMapper.selectList(
+                new LambdaQueryWrapper<Punishment>()
+                        .eq(Punishment::getUserId, userId)
+                        .eq(Punishment::getIsActive, Punishment.ACTIVE)
+                        .and(query -> query.isNull(Punishment::getExpireAt)
+                                .or()
+                                .gt(Punishment::getExpireAt, LocalDateTime.now()))
+                        .orderByDesc(Punishment::getCreatedAt)
+        );
+
+        boolean hasBan = activePunishments.stream()
+                .anyMatch(item -> Punishment.TYPE_BAN.equals(item.getType()));
+        if (hasBan) {
+            return User.STATUS_BANNED;
+        }
+
+        boolean hasMute = activePunishments.stream()
+                .anyMatch(item -> Punishment.TYPE_MUTE.equals(item.getType()));
+        if (hasMute) {
+            return User.STATUS_MUTED;
+        }
+
+        return User.STATUS_NORMAL;
     }
 
     private String getOperatorUsername(Long operatorId) {

@@ -327,6 +327,8 @@ const MESSAGE_PAGE_SIZE = 50
 const RECALLED_TEXT = '【此消息已被撤回】'
 const PEER_TYPING_TIMEOUT = 3000
 const LOCAL_TYPING_IDLE_TIMEOUT = 1200
+const BOTTOM_SCROLL_RETRY_COUNT = 12
+const BOTTOM_SCROLL_RETRY_DELAY = 16
 
 const route = useRoute()
 const router = useRouter()
@@ -357,6 +359,7 @@ let unsubscribeWebSocket = null
 let peerTypingTimer = null
 let localTypingTimer = null
 let isLocalTyping = false
+let pendingScrollToBottom = false
 
 const activeConversation = computed(() =>
   conversations.value.find((item) => String(item.id) === String(activeConvId.value))
@@ -525,11 +528,13 @@ function resetMessageState() {
   messagePage.value = 1
   hasMoreMessages.value = false
   loadingMore.value = false
+  pendingScrollToBottom = false
 }
 
 function closeConversation() {
   stopPeerTyping()
   stopLocalTyping()
+  pendingScrollToBottom = false
   activeConvId.value = null
   resetMessageState()
 }
@@ -651,6 +656,7 @@ async function selectConversation(conv) {
 
   await loadConversationMessages(conv.id, { reset: true })
   await markConversationAsRead(conv, { silent: true })
+  await scrollToBottom()
 }
 
 async function handleSend() {
@@ -805,11 +811,36 @@ async function handleHeaderCommand(command) {
 }
 
 async function scrollToBottom() {
-  await nextTick()
-  if (messagesRef.value) {
-    messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+  pendingScrollToBottom = true
+
+  for (let attempt = 0; attempt < BOTTOM_SCROLL_RETRY_COUNT; attempt += 1) {
+    await nextTick()
+
+    if (messagesRef.value) {
+      await new Promise((resolve) => {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(resolve)
+        })
+      })
+
+      messagesRef.value.scrollTop = messagesRef.value.scrollHeight
+      pendingScrollToBottom = false
+      return
+    }
+
+    await new Promise((resolve) => {
+      setTimeout(resolve, BOTTOM_SCROLL_RETRY_DELAY)
+    })
   }
 }
+
+watch(messagesRef, async (container) => {
+  if (!container || !pendingScrollToBottom) {
+    return
+  }
+
+  await scrollToBottom()
+})
 
 function formatTime(time, isMsg = false) {
   if (!time) return ''
